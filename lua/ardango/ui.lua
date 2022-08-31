@@ -24,12 +24,12 @@ M.show_results = function(data)
 
     popup:on({ nuievent.BufLeave }, function()
       popup:unmount()
-      api.nvim_buf_delete(popBuffer)
+      api.nvim_buf_delete(popBuffer, { force = true })
     end, { once = true })
 
     popup:map("n", "<esc>", function()
       popup:unmount()
-      api.nvim_buf_delete(popBuffer)
+      api.nvim_buf_delete(popBuffer, { force = true })
     end, { silent = true })
   end
 end
