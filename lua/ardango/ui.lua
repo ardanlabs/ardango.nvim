@@ -23,13 +23,13 @@ M.show_results = function(data)
     popup:mount()
 
     popup:on({ nuievent.BufLeave }, function()
-      popup:unmount()
       api.nvim_buf_delete(popBuffer, { force = true })
+      popup:unmount()
     end, { once = true })
 
     popup:map("n", "<esc>", function()
-      popup:unmount()
       api.nvim_buf_delete(popBuffer, { force = true })
+      popup:unmount()
     end, { silent = true })
   end
 end
