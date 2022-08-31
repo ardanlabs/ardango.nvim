@@ -55,7 +55,7 @@ end
 
 -- Runs the test under the cursor and shows the results
 -- in a popup window.
-M.RunCurrentTest = function()
+M.RunCurrTest = function()
   local current_dir = vim.fn.expand('%:h')
   local cursor = api.nvim_win_get_cursor(0)
   local bufnr = api.nvim_get_current_buf()

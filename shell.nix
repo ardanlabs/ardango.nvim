@@ -6,6 +6,7 @@ pkgs.mkShell {
       p = pkgs;
     in
     [
+      p.zsh
       p.lua5_3
       p.sumneko-lua-language-server
     ];
