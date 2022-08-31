@@ -20,7 +20,6 @@ M.show_results = function(data)
       bufnr = popBuffer,
     }
 
-    print(vim.inspect(popup))
     popup:mount()
 
     popup:on({ nuievent.BufLeave }, function()

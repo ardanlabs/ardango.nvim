@@ -33,7 +33,7 @@ M.RunCurrTest = function()
   for _, node in test_query:iter_captures(root, bufnr, 0, -1) do
     if tsutils.is_in_node_range(node:parent(), cursor[1] - 1, cursor[2]) then
       -- Gets the name through the node text.
-      local test_name = tsutils.get_node_text(node)[1]
+      local test_name = vim.treesitter.query.get_node_text(node)[1]
 
       -- Runs the go test tool, passing as callback the show results function.
       vim.fn.jobstart(
