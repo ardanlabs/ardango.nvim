@@ -1,5 +1,6 @@
 local Popup = require('nui.popup')
 local nuievent = require('nui.utils.autocmd').event
+local api = vim.api
 
 local M = {}
 
