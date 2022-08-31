@@ -1,6 +1,5 @@
-local Popup = require('nui.popup')
-local nuievent = require('nui.utils.autocmd').event
 local tsutils = require('nvim-treesitter.ts_utils')
+local ui = require('ui')
 
 local M = {}
 
@@ -22,37 +21,6 @@ end
 
 local api = vim.api
 
--- Show results opens up a popup showing the recived data.
-local show_results = function(data)
-  if data and not (data[1] == "") then
-    -- Write into a hidden buffer.
-    local popBuffer = api.nvim_create_buf(false, false)
-    api.nvim_buf_set_lines(popBuffer, 0, -1, false, data)
-
-    -- Create the popup
-    local popup = Popup {
-      relative = "cursor",
-      position = 0,
-      size = "50%",
-      enter = true,
-      bufnr = popBuffer,
-    }
-
-    print(vim.inspect(popup))
-    popup:mount()
-
-    popup:on({ nuievent.BufLeave }, function()
-      popup:unmount()
-      api.nvim_buf_delete(popBuffer)
-    end, { once = true })
-
-    popup:map("n", "<esc>", function()
-      popup:unmount()
-      api.nvim_buf_delete(popBuffer)
-    end, { silent = true })
-  end
-end
-
 -- Runs the test under the cursor and shows the results
 -- in a popup window.
 M.RunCurrTest = function()
@@ -72,11 +40,11 @@ M.RunCurrTest = function()
         "go test ./" .. current_dir .. " -run ^" .. test_name .. "$", {
         stdout_buffered = true,
         on_stdout = function(_, data)
-          show_results(data)
+          ui.show_results(data)
         end,
         stderr_buffered = true,
         on_stderr = function(_, data)
-          show_results(data)
+          ui.show_results(data)
         end,
       })
     end
@@ -92,11 +60,11 @@ M.BuildCurrPackage = function()
     "go build -o /dev/null ./" .. current_dir, {
     stdout_buffered = true,
     on_stdout = function(_, data)
-      show_results(data)
+      ui.show_results(data)
     end,
     stderr_buffered = true,
     on_stderr = function(_, data)
-      show_results(data)
+      ui.show_results(data)
     end,
   })
 end
