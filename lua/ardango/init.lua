@@ -51,7 +51,7 @@ M.RunCurrTest = function()
   end
 end
 
--- Build your the package in the current dir.
+-- Build the package in the current dir.
 M.BuildCurrPackage = function()
   local current_dir = vim.fn.expand('%:h')
 
@@ -69,7 +69,7 @@ M.BuildCurrPackage = function()
   })
 end
 
--- OrgImports is a function to update imports of a buffer.
+-- OrgImports is a function to update imports of the current buffer.
 M.OrgBufImports = function(wait_ms)
   local params = vim.lsp.util.make_range_params()
   params.context = { only = { "source.organizeImports" } }
@@ -85,7 +85,8 @@ M.OrgBufImports = function(wait_ms)
   end
 end
 
--- SignatureInStatusLine show the element signature info on hover in the status line.
+-- SignatureInStatusLine shows the element under the cursor
+-- signature info on hover in the status line.
 M.SignatureInStatusLine = function(wait_ms)
   local params = vim.lsp.util.make_position_params()
   local result = vim.lsp.buf_request_sync(0, "textDocument/hover", params, wait_ms)
