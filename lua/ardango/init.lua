@@ -166,7 +166,7 @@ M.AddTagToField = function()
 end
 
 -- RemoveTagsFromStruct receives a tag name and removes the
--- element from all field tags inside the struct under the field.
+-- element from all field tags inside the struct under the cursor.
 M.RemoveTagsFromStruct = function()
   vim.ui.input({ prompt = 'Enter tag name' }, function(name)
     local tag_name = name
@@ -175,7 +175,7 @@ M.RemoveTagsFromStruct = function()
 end
 
 -- RemoveTagFromField receives a tag name and removes the
--- element from the struct field under the field.
+-- element from the struct field under the cursor.
 M.RemoveTagFromField = function()
   vim.ui.input({ prompt = 'Enter tag name' }, function(name)
     local tag_name = name
