@@ -108,4 +108,80 @@ M.SignatureInStatusLine = function(wait_ms)
   end
 end
 
+-- snake receives a string a returns it in snake case
+local function snake(s)
+  return s:gsub('%f[^%l]%u', '_%1')
+      :gsub('%f[^%a]%d', '_%1')
+      :gsub('%f[^%d]%a', '_%1')
+      :gsub('(%u)(%u%l)', '%1_%2')
+      :lower()
+end
+
+local structtag = require('ardango.struct_tag')
+
+-- AddTagToStruct receives a tag name and value and adds to
+-- all fields inside the struct under the cursor.
+-- It handles adding more values to an existing tag element.
+M.AddTagsToStruct = function()
+  vim.ui.input({ prompt = 'Enter tag name', default = 'json' }, function(name)
+    local tag_name = name
+
+    local callback = function(field_name)
+      return snake(field_name)
+    end
+
+    vim.ui.input({ prompt = 'Enter tag value' }, function(value)
+      if value then
+        callback = function(_)
+          return value
+        end
+      end
+
+      structtag.add_to_struct_tag(tag_name, callback)
+    end)
+  end)
+end
+
+-- AddTagToField receives a tag name and value and adds to
+-- struct field under the cursor.
+-- It handles adding more values to an existing tag element.
+M.AddTagToField = function()
+  vim.ui.input({ prompt = 'Enter tag name', default = 'json' }, function(name)
+    local tag_name = name
+
+    local callback = function(field_name)
+      return snake(field_name)
+    end
+
+    vim.ui.input({ prompt = 'Enter tag value' }, function(value)
+      if value then
+        callback = function(_)
+          return value
+        end
+      end
+
+      structtag.add_to_field_tag(tag_name, callback)
+    end)
+  end)
+end
+
+-- RemoveTagsFromStruct receives a tag name and removes the
+-- element from all field tags inside the struct under the field.
+M.RemoveTagsFromStruct = function()
+  vim.ui.input({ prompt = 'Enter tag name' }, function(name)
+    local tag_name = name
+    structtag.remove_from_struct_tag(tag_name)
+  end)
+end
+
+-- RemoveTagFromField receives a tag name and removes the
+-- element from the struct field under the field.
+M.RemoveTagFromField = function()
+  vim.ui.input({ prompt = 'Enter tag name' }, function(name)
+    local tag_name = name
+    structtag.remove_from_field_tag(tag_name)
+  end)
+end
+
+
 return M
