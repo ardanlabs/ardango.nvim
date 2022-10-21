@@ -8,6 +8,10 @@ This plugin exposes utility functions to enhance coding Go in Neovim.
 - __BuildCurrPackage__: Build the package in the current dir.
 - __OrgBufImports__: Update imports of the current buffer.
 - __SignatureInStatusLine__: Shows the element under the cursor signature info on hover in the status line.
+- __AddTagToField__: Adds go tag element to the struct field under the cursor, can handle exisiting elements. If no value is passed the snake cased field name will be the element value.
+- __AddTagsToStruct__: Adds go tag element to all fields inside the struct under the cursor, can handle exisiting elements. If no value is passed the snake cased field name will be the element value.
+- __RemoveTagFromField__: Removes a tag element from the field under the cursor.
+- __RemoveTagsFromStruct__: Removes a tag element from all the fields inside the struct under the cursor.
 
 ## Dependencies
 
