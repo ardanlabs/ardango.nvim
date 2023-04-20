@@ -5,7 +5,7 @@ local M = {}
 
 -- Selects all test functions in the buffer
 -- and captures their names.
-local test_query = vim.treesitter.query.parse_query('go', [[
+local test_query = vim.treesitter.query.parse('go', [[
   (function_declaration
     name: (identifier) @name (#match? @name "Test*")
   )
