@@ -5,7 +5,7 @@ local M = {}
 
 -- Selects all test functions in the buffer
 -- and captures their names.
-local test_query = vim.treesitter.parse_query('go', [[
+local test_query = vim.treesitter.query.parse_query('go', [[
   (function_declaration
     name: (identifier) @name (#match? @name "Test*")
   )
@@ -38,15 +38,15 @@ M.RunCurrTest = function()
       -- Runs the go test tool, passing as callback the show results function.
       vim.fn.jobstart(
         "go test ./" .. current_dir .. " -run ^" .. test_name .. "$", {
-        stdout_buffered = true,
-        on_stdout = function(_, data)
-          ui.show_results(data)
-        end,
-        stderr_buffered = true,
-        on_stderr = function(_, data)
-          ui.show_results(data)
-        end,
-      })
+          stdout_buffered = true,
+          on_stdout = function(_, data)
+            ui.show_results(data)
+          end,
+          stderr_buffered = true,
+          on_stderr = function(_, data)
+            ui.show_results(data)
+          end,
+        })
     end
   end
 end
@@ -58,15 +58,15 @@ M.BuildCurrPackage = function()
   -- Runs the go build, passing as callback the show results function.
   vim.fn.jobstart(
     "go build -o /dev/null ./" .. current_dir, {
-    stdout_buffered = true,
-    on_stdout = function(_, data)
-      ui.show_results(data)
-    end,
-    stderr_buffered = true,
-    on_stderr = function(_, data)
-      ui.show_results(data)
-    end,
-  })
+      stdout_buffered = true,
+      on_stdout = function(_, data)
+        ui.show_results(data)
+      end,
+      stderr_buffered = true,
+      on_stderr = function(_, data)
+        ui.show_results(data)
+      end,
+    })
 end
 
 -- OrgImports is a function to update imports of the current buffer.

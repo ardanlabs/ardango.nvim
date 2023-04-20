@@ -131,19 +131,19 @@ local function get_root(bufnr)
 end
 
 local structs_query = vim.treesitter.parse_query('go', [[ (struct_type) @struct ]])
-local fields_query = vim.treesitter.parse_query('go', [[ 
+local fields_query = vim.treesitter.parse_query('go', [[
   (field_declaration_list
     (field_declaration) @field
   )
   ]])
 
-local field_name_query = vim.treesitter.parse_query('go', [[ 
+local field_name_query = vim.treesitter.parse_query('go', [[
   (field_declaration
     name: (field_identifier) @name
   )
   ]])
 
-local field_tag_query = vim.treesitter.parse_query('go', [[ 
+local field_tag_query = vim.treesitter.parse_query('go', [[
   (field_declaration
     tag: (raw_string_literal) @tag
   )
@@ -166,7 +166,7 @@ local function get_current_struct(bufnr)
 end
 
 local function get_current_field()
-  local curr_node = tsutils.get_node_at_cursor(0)
+  local curr_node = tsutils.get_node()
 
   local find_field_declaration
   find_field_declaration = function(node)
@@ -185,7 +185,7 @@ local function get_current_field()
   return find_field_declaration(curr_node)
 end
 
-local function get_field_name(node --[[tsnode]] , bufnr)
+local function get_field_name(node --[[tsnode]], bufnr)
   for _, name in field_name_query:iter_captures(node, bufnr) do
     return vim.treesitter.get_node_text(name, bufnr)
   end
