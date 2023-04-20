@@ -130,20 +130,20 @@ local function get_root(bufnr)
   return tree:root()
 end
 
-local structs_query = vim.treesitter.parse_query('go', [[ (struct_type) @struct ]])
-local fields_query = vim.treesitter.parse_query('go', [[
+local structs_query = vim.treesitter.query.parse('go', [[ (struct_type) @struct ]])
+local fields_query = vim.treesitter.query.parse('go', [[
   (field_declaration_list
     (field_declaration) @field
   )
   ]])
 
-local field_name_query = vim.treesitter.parse_query('go', [[
+local field_name_query = vim.treesitter.query.parse('go', [[
   (field_declaration
     name: (field_identifier) @name
   )
   ]])
 
-local field_tag_query = vim.treesitter.parse_query('go', [[
+local field_tag_query = vim.treesitter.query.parse('go', [[
   (field_declaration
     tag: (raw_string_literal) @tag
   )
