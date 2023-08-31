@@ -119,31 +119,31 @@ local st = {
   Elem = Elem,
 }
 
-local tsutils = require('nvim-treesitter.ts_utils')
+local treesitter = vim.treesitter
 local api = vim.api
 
 -- Gets the treesitter root node of a buffer.
 local function get_root(bufnr)
-  local parser = vim.treesitter.get_parser(bufnr, "go", {})
+  local parser = treesitter.get_parser(bufnr, "go", {})
   local tree = parser:parse()[1]
 
   return tree:root()
 end
 
-local structs_query = vim.treesitter.query.parse('go', [[ (struct_type) @struct ]])
-local fields_query = vim.treesitter.query.parse('go', [[
+local structs_query = treesitter.query.parse('go', [[ (struct_type) @struct ]])
+local fields_query = treesitter.query.parse('go', [[
   (field_declaration_list
     (field_declaration) @field
   )
   ]])
 
-local field_name_query = vim.treesitter.query.parse('go', [[
+local field_name_query = treesitter.query.parse('go', [[
   (field_declaration
     name: (field_identifier) @name
   )
   ]])
 
-local field_tag_query = vim.treesitter.query.parse('go', [[
+local field_tag_query = treesitter.query.parse('go', [[
   (field_declaration
     tag: (raw_string_literal) @tag
   )
@@ -156,7 +156,7 @@ local function get_current_struct(bufnr)
   -- select the struct under the cursor, if there is one
   local curr_struct = nil
   for _, node in structs_query:iter_captures(root, bufnr, 0, -1) do
-    if tsutils.is_in_node_range(node, cursor[1] - 1, cursor[2]) then
+    if treesitter.is_in_node_range(node, cursor[1] - 1, cursor[2]) then
       curr_struct = node
       break
     end
@@ -166,7 +166,7 @@ local function get_current_struct(bufnr)
 end
 
 local function get_current_field()
-  local curr_node = tsutils.get_node()
+  local curr_node = treesitter.get_node()
 
   local find_field_declaration
   find_field_declaration = function(node)
@@ -187,7 +187,7 @@ end
 
 local function get_field_name(node --[[tsnode]], bufnr)
   for _, name in field_name_query:iter_captures(node, bufnr) do
-    return vim.treesitter.get_node_text(name, bufnr)
+    return treesitter.get_node_text(name, bufnr)
   end
 end
 
@@ -204,7 +204,7 @@ local function remove_tag_from_field(bufnr, node, tag_name)
       return
     end
 
-    local raw_tag = vim.treesitter.get_node_text(n, bufnr)
+    local raw_tag = treesitter.get_node_text(n, bufnr)
     local parsedTag = st.StructTag:new(raw_tag)
 
     local new_raw = parsedTag:remove(tag_name):raw()
@@ -223,7 +223,7 @@ local function add_tag_to_field_declaration(bufnr, node, tag_name, tag_value_cal
     local n = tag_nodes[1]
     local start_row, start_col, end_row, end_col = n:range()
 
-    local raw_tag = vim.treesitter.get_node_text(n, bufnr)
+    local raw_tag = treesitter.get_node_text(n, bufnr)
     local parsed = st.StructTag:new(raw_tag)
 
     local new_raw = parsed:add(tag_name, tag_value):raw()
@@ -303,7 +303,7 @@ local function remove_tag_elem_from_struct(bufnr, node, elem_name)
       goto continue
     end
 
-    local raw_tag = vim.treesitter.get_node_text(tag_node, bufnr)
+    local raw_tag = treesitter.get_node_text(tag_node, bufnr)
     local parsedTag = st.StructTag:new(raw_tag)
 
     local new_raw = parsedTag:remove(elem_name):raw()
