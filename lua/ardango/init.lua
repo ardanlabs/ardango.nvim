@@ -131,7 +131,7 @@ M.AddTagsToStruct = function()
     end
 
     vim.ui.input({ prompt = 'Enter tag value' }, function(value)
-      if value then
+      if value and value ~= '' then
         callback = function(_)
           return value
         end
@@ -154,7 +154,7 @@ M.AddTagToField = function()
     end
 
     vim.ui.input({ prompt = 'Enter tag value' }, function(value)
-      if value then
+      if value and value ~= '' then
         callback = function(_)
           return value
         end
