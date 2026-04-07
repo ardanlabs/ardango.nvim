@@ -1,4 +1,3 @@
-local tsutils = require('nvim-treesitter.ts_utils')
 local ui = require('ardango.ui')
 
 local M = {}
@@ -31,7 +30,7 @@ M.RunCurrTest = function()
 
   -- Iterate over the treesitter captures.
   for _, node in test_query:iter_captures(root, bufnr, 0, -1) do
-    if tsutils.is_in_node_range(node:parent(), cursor[1] - 1, cursor[2]) then
+    if vim.treesitter.is_in_node_range(node:parent(), cursor[1] - 1, cursor[2]) then
       -- Gets the name through the node text.
       local test_name = vim.treesitter.get_node_text(node, bufnr)
 
