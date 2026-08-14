@@ -79,9 +79,18 @@ local function result_buf()
   return result_popup_state.bufnr
 end
 
+-- Opens filename:lnum:col in whatever window is current (i.e. the one
+-- the popup was floating over, once closed).
+local function jump_to(item)
+  vim.cmd("edit " .. vim.fn.fnameescape(item.filename))
+  api.nvim_win_set_cursor(0, { item.lnum, math.max(item.col - 1, 0) })
+end
+
 -- Show popup opens up a popup showing the received data, reusing the
 -- previous run's buffer/window if there is one.
-M.show_popup = function(data)
+-- base_dir - directory used to resolve relative file:line references
+--            under the cursor when pressing <CR>.
+M.show_popup = function(data, base_dir)
   if data and not (data[1] == "") then
     -- Close a still-open popup from a previous run rather than stacking
     -- a new one on top of it. Popup:unmount() is a no-op if not mounted.
@@ -116,8 +125,21 @@ M.show_popup = function(data)
       popup:unmount()
     end, { once = true })
 
-    popup:map("n", "<esc>", function()
+    local function close()
       popup:unmount()
+    end
+    popup:map("n", "<esc>", close, { silent = true })
+    popup:map("n", "q", close, { silent = true })
+
+    -- Jump to the file:line under the cursor, same as quickfix's <CR>.
+    popup:map("n", "<CR>", function()
+      local line = api.nvim_get_current_line()
+      local item = parse_line(line, base_dir or vim.fn.getcwd())
+      if not item then
+        return
+      end
+      close()
+      jump_to(item)
     end, { silent = true })
   end
 end
@@ -206,7 +228,7 @@ M.show_results = function(data, opts)
     end
   end
 
-  M.show_popup(lines)
+  M.show_popup(lines, opts.base_dir)
 end
 
 return M

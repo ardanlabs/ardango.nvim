@@ -10,7 +10,7 @@ Living list of TUI/usability improvement ideas for ardango.nvim. Check items off
 - [x] Syntax highlight PASS/FAIL/error lines in the fallback popup — `DiagnosticOk`/`DiagnosticError` (line-level, via `nvim_buf_add_highlight`)
 - [x] Optional `opts.verbose` — list each passing test as a single green line (`go test -v`, filtered to `--- PASS`/`--- FAIL` lines, `=== RUN` noise stripped) instead of only showing failures
 - [x] Reuse one result buffer/window instead of a new scratch buffer per run — persists across calls; a still-open popup from a previous run is closed (not stacked) before the next one mounts
-- [ ] More popup keymaps (`q` to close, `<CR>` to jump to quickfix entry)
+- [x] More popup keymaps — `q` to close (alongside `<esc>`), `<CR>` to jump to the file:line under the cursor (same idea as quickfix's `<CR>`)
 - [ ] Configurable popup (border, size, position) via `setup()`
 
 ## Struct tag editing (`lua/ardango/struct_tag.lua`)
