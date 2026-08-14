@@ -51,12 +51,29 @@ local function all_success(lines)
   return true
 end
 
+local FAIL_HL = "DiagnosticError"
+local PASS_HL = vim.fn.has("nvim-0.10") == 1 and "DiagnosticOk" or "String"
+local RESULT_NS = api.nvim_create_namespace("ardango_results")
+
+-- Highlights PASS/ok lines and FAIL/error-reference lines in a popup
+-- buffer so failures stand out without having to read every line.
+local function highlight_results(bufnr, lines)
+  for i, line in ipairs(lines) do
+    if is_success_line(line) then
+      api.nvim_buf_add_highlight(bufnr, RESULT_NS, PASS_HL, i - 1, 0, -1)
+    elseif line:match("FAIL") or line:match(FILE_LINE_PATTERN) then
+      api.nvim_buf_add_highlight(bufnr, RESULT_NS, FAIL_HL, i - 1, 0, -1)
+    end
+  end
+end
+
 -- Show popup opens up a popup showing the received data.
 M.show_popup = function(data)
   if data and not (data[1] == "") then
     -- Write into a hidden buffer.
     local popBuffer = api.nvim_create_buf(false, false)
     api.nvim_buf_set_lines(popBuffer, 0, -1, false, data)
+    highlight_results(popBuffer, data)
 
     -- Create the popup. winhighlight is pinned explicitly so the popup
     -- always renders with the normal editor colors, regardless of what a

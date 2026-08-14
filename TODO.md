@@ -7,7 +7,7 @@ Living list of TUI/usability improvement ideas for ardango.nvim. Check items off
 - [x] "Running..." notification before a test/build job starts
 - [x] Optional Telescope integration (`opts.telescope`) — browse failures as a fuzzy-searchable list with a preview of the failing location, via Telescope's built-in `quickfix()` picker; falls back to plain quickfix if telescope.nvim isn't installed
 - [x] Wire `opts.quickfix`/`opts.telescope` up to something a user can actually flip — `RunCurrTest`/`BuildCurrPackage` now take an optional opts table forwarded to `ui.show_results`; example `<leader>gq`/`<leader>gs` keymaps in the README and `dev/init.lua`
-- [ ] Syntax highlight PASS/FAIL/error lines in the fallback popup
+- [x] Syntax highlight PASS/FAIL/error lines in the fallback popup — `DiagnosticOk`/`DiagnosticError` (line-level, via `nvim_buf_add_highlight`)
 - [ ] Reuse one result buffer/window instead of a new scratch buffer per run
 - [ ] More popup keymaps (`q` to close, `<CR>` to jump to quickfix entry)
 - [ ] Configurable popup (border, size, position) via `setup()`
