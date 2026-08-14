@@ -21,7 +21,7 @@ end
 local api = vim.api
 
 -- Runs the test under the cursor and shows the results
--- in a popup window.
+-- as a quickfix list (or popup, if nothing is parseable).
 M.RunCurrTest = function()
   local current_dir = vim.fn.expand('%:h')
   local cursor = api.nvim_win_get_cursor(0)
@@ -34,16 +34,22 @@ M.RunCurrTest = function()
       -- Gets the name through the node text.
       local test_name = vim.treesitter.get_node_text(node, bufnr)
 
-      -- Runs the go test tool, passing as callback the show results function.
+      vim.notify("go test: running " .. test_name .. "...", vim.log.levels.INFO)
+
+      local output = {}
+      -- Runs the go test tool, buffering output to hand off on exit.
       vim.fn.jobstart(
         "go test ./" .. current_dir .. " -run ^" .. test_name .. "$", {
           stdout_buffered = true,
-          on_stdout = function(_, data)
-            ui.show_results(data)
-          end,
           stderr_buffered = true,
+          on_stdout = function(_, data)
+            vim.list_extend(output, data or {})
+          end,
           on_stderr = function(_, data)
-            ui.show_results(data)
+            vim.list_extend(output, data or {})
+          end,
+          on_exit = function()
+            ui.show_results(output, { label = "go test: " .. test_name, base_dir = current_dir })
           end,
         })
     end
@@ -54,16 +60,22 @@ end
 M.BuildCurrPackage = function()
   local current_dir = vim.fn.expand('%:h')
 
-  -- Runs the go build, passing as callback the show results function.
+  vim.notify("go build: running...", vim.log.levels.INFO)
+
+  local output = {}
+  -- Runs the go build, buffering output to hand off on exit.
   vim.fn.jobstart(
     "go build -o /dev/null ./" .. current_dir, {
       stdout_buffered = true,
-      on_stdout = function(_, data)
-        ui.show_results(data)
-      end,
       stderr_buffered = true,
+      on_stdout = function(_, data)
+        vim.list_extend(output, data or {})
+      end,
       on_stderr = function(_, data)
-        ui.show_results(data)
+        vim.list_extend(output, data or {})
+      end,
+      on_exit = function()
+        ui.show_results(output, { label = "go build", base_dir = current_dir })
       end,
     })
 end
