@@ -1,0 +1,9 @@
+package testdata
+
+// Copy this file to broken.go (see dev/README.md) to exercise the
+// BuildCurrPackage failure path: it references an undefined identifier,
+// so `go build` reports a file:line:col error that should land in the
+// quickfix list.
+func Broken() string {
+	return undefinedIdentifier
+}
