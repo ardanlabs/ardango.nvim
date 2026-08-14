@@ -20,10 +20,11 @@ end
 
 local api = vim.api
 
--- Runs the test under the cursor and shows the results in a popup
--- (pass opts.quickfix = true to ui.show_results to use the quickfix
--- list instead).
-M.RunCurrTest = function()
+-- Runs the test under the cursor and shows the results in a popup by
+-- default. Pass opts.quickfix = true (or opts.telescope = true) to show
+-- them in the quickfix list / a Telescope picker instead - see
+-- ui.show_results for the full set of opts.
+M.RunCurrTest = function(opts)
   local current_dir = vim.fn.expand('%:h')
   local cursor = api.nvim_win_get_cursor(0)
   local bufnr = api.nvim_get_current_buf()
@@ -50,15 +51,19 @@ M.RunCurrTest = function()
             vim.list_extend(output, data or {})
           end,
           on_exit = function()
-            ui.show_results(output, { label = "go test: " .. test_name, base_dir = current_dir })
+            local show_opts = vim.tbl_extend("force",
+              { label = "go test: " .. test_name, base_dir = current_dir },
+              opts or {})
+            ui.show_results(output, show_opts)
           end,
         })
     end
   end
 end
 
--- Build the package in the current dir.
-M.BuildCurrPackage = function()
+-- Build the package in the current dir, showing the results in a popup by
+-- default. Same opts as RunCurrTest.
+M.BuildCurrPackage = function(opts)
   local current_dir = vim.fn.expand('%:h')
 
   vim.notify("go build: running...", vim.log.levels.INFO)
@@ -76,7 +81,10 @@ M.BuildCurrPackage = function()
         vim.list_extend(output, data or {})
       end,
       on_exit = function()
-        ui.show_results(output, { label = "go build", base_dir = current_dir })
+        local show_opts = vim.tbl_extend("force",
+          { label = "go build", base_dir = current_dir },
+          opts or {})
+        ui.show_results(output, show_opts)
       end,
     })
 end

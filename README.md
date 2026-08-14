@@ -4,8 +4,8 @@ This plugin exposes utility functions to enhance coding Go in Neovim.
 
 ## Exposed functions:
 
-- __RunCurrTest__: Runs the test under the cursor and shows the results in a popup window.
-- __BuildCurrPackage__: Build the package in the current dir.
+- __RunCurrTest__: Runs the test under the cursor and shows the results in a popup window by default. Takes an optional opts table (`{ quickfix = true }` or `{ telescope = true }`) to show them in the quickfix list or a Telescope picker instead — see `lua/ardango/ui.lua`'s `show_results` for the full set of opts.
+- __BuildCurrPackage__: Build the package in the current dir. Takes the same optional opts table as `RunCurrTest`.
 - __OrgBufImports__: Update imports of the current buffer.
 - __SignatureInStatusLine__: Shows the element under the cursor signature info on hover in the status line.
 - __AddTagToField__: Adds go tag element to the struct field under the cursor, can handle exisiting elements. If no value is passed the snake cased field name will be the element value.
@@ -55,6 +55,11 @@ local ardango = require "ardango"
 local opts = { noremap = true, silent = true }
 -- Set the keymap to test the package under the cursor.
 vim.keymap.set('n', '<leader>gt', ardango.RunCurrTest, opts)
+-- Same, but browse failures via the quickfix list instead of a popup.
+vim.keymap.set('n', '<leader>gq', function() ardango.RunCurrTest({ quickfix = true }) end, opts)
+-- Same, but browse failures via Telescope instead of a popup (needs
+-- telescope.nvim installed).
+vim.keymap.set('n', '<leader>gs', function() ardango.RunCurrTest({ telescope = true }) end, opts)
 -- Set the keymap to build the package under the cursor.
 vim.keymap.set('n', '<leader>gp', ardango.BuildCurrPackage, opts)
 -- Adds tag element to the field under the cursor field.

@@ -28,6 +28,8 @@ local ardango = require("ardango")
 
 local opts = { noremap = true, silent = true }
 vim.keymap.set("n", "<leader>gt", ardango.RunCurrTest, opts)
+vim.keymap.set("n", "<leader>gq", function() ardango.RunCurrTest({ quickfix = true }) end, opts)
+vim.keymap.set("n", "<leader>gs", function() ardango.RunCurrTest({ telescope = true }) end, opts)
 vim.keymap.set("n", "<leader>gp", ardango.BuildCurrPackage, opts)
 vim.keymap.set("n", "<leader>taf", ardango.AddTagToField, opts)
 vim.keymap.set("n", "<leader>tas", ardango.AddTagsToStruct, opts)
