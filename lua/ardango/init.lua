@@ -172,18 +172,79 @@ end
 
 local structtag = require('ardango.struct_tag')
 
+local COMMON_TAG_NAMES = { "json", "yaml", "db", "validate", "xml" }
+
+-- Opens a prompt via Telescope - fuzzy-matching against `results`, using
+-- whatever's typed if nothing matches (Telescope leaves no entry
+-- selected when the filtered list is empty) - or a plain vim.ui.input if
+-- telescope.nvim isn't installed, so a multi-step flow (tag name, then
+-- tag value) looks/feels the same at every step instead of dropping to
+-- the cmdline partway through.
+--
+-- on_result is called with the resolved string on <CR> ("" if confirmed
+-- empty). On the Telescope path, cancelling (<esc>) does not call
+-- on_result at all; on the vim.ui.input path, cancelling calls it with
+-- nil, per vim.ui.input's own contract - callers should treat both "not
+-- called" and "called with nil/empty" as "no input given".
+local function prompt(title, results, input_opts, on_result)
+  local ok_pickers, pickers = pcall(require, 'telescope.pickers')
+  local ok_finders, finders = pcall(require, 'telescope.finders')
+  local ok_config, telescope_config = pcall(require, 'telescope.config')
+  local ok_actions, actions = pcall(require, 'telescope.actions')
+  local ok_action_state, action_state = pcall(require, 'telescope.actions.state')
+
+  if not (ok_pickers and ok_finders and ok_config and ok_actions and ok_action_state) then
+    vim.ui.input(input_opts, on_result)
+    return
+  end
+
+  pickers.new({}, {
+    prompt_title = title,
+    finder = finders.new_table({ results = results }),
+    sorter = telescope_config.values.generic_sorter({}),
+    previewer = false,
+    attach_mappings = function(prompt_bufnr, _)
+      actions.select_default:replace(function()
+        local selection = action_state.get_selected_entry()
+        local typed = action_state.get_current_line()
+        actions.close(prompt_bufnr)
+        on_result(selection and selection.value or typed)
+      end)
+      return true
+    end,
+  }):find()
+end
+
+-- Lets the user pick a tag name, from COMMON_TAG_NAMES or a custom one -
+-- see `prompt`. callback is invoked with the chosen name, or not at all
+-- if nothing was given (cancelled, or confirmed empty).
+local function select_tag_name(callback)
+  prompt('Tag name', COMMON_TAG_NAMES, { prompt = 'Enter tag name', default = 'json' }, function(name)
+    if name and name ~= '' then
+      callback(name)
+    end
+  end)
+end
+
+-- Lets the user type a tag value - see `prompt`. callback receives
+-- nil/"" for "no value given" (callers default to the snake-cased field
+-- name in that case); it may also not be called at all if cancelled via
+-- Telescope's <esc>, same as everywhere else `prompt` is used.
+local function prompt_tag_value(callback)
+  prompt('Tag value (empty = snake_case field name)', {},
+    { prompt = 'Enter tag value (empty = snake_case field name)' }, callback)
+end
+
 -- AddTagToStruct receives a tag name and value and adds to
 -- all fields inside the struct under the cursor.
 -- It handles adding more values to an existing tag element.
 M.AddTagsToStruct = function()
-  vim.ui.input({ prompt = 'Enter tag name', default = 'json' }, function(name)
-    local tag_name = name
-
+  select_tag_name(function(tag_name)
     local callback = function(field_name)
       return snake(field_name)
     end
 
-    vim.ui.input({ prompt = 'Enter tag value' }, function(value)
+    prompt_tag_value(function(value)
       if value and value ~= '' then
         callback = function(_)
           return value
@@ -199,14 +260,12 @@ end
 -- struct field under the cursor.
 -- It handles adding more values to an existing tag element.
 M.AddTagToField = function()
-  vim.ui.input({ prompt = 'Enter tag name', default = 'json' }, function(name)
-    local tag_name = name
-
+  select_tag_name(function(tag_name)
     local callback = function(field_name)
       return snake(field_name)
     end
 
-    vim.ui.input({ prompt = 'Enter tag value' }, function(value)
+    prompt_tag_value(function(value)
       if value and value ~= '' then
         callback = function(_)
           return value
@@ -221,8 +280,7 @@ end
 -- RemoveTagsFromStruct receives a tag name and removes the
 -- element from all field tags inside the struct under the cursor.
 M.RemoveTagsFromStruct = function()
-  vim.ui.input({ prompt = 'Enter tag name' }, function(name)
-    local tag_name = name
+  select_tag_name(function(tag_name)
     structtag.remove_from_struct_tag(tag_name)
   end)
 end
@@ -230,8 +288,7 @@ end
 -- RemoveTagFromField receives a tag name and removes the
 -- element from the struct field under the cursor.
 M.RemoveTagFromField = function()
-  vim.ui.input({ prompt = 'Enter tag name' }, function(name)
-    local tag_name = name
+  select_tag_name(function(tag_name)
     structtag.remove_from_field_tag(tag_name)
   end)
 end

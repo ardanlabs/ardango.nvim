@@ -10,17 +10,17 @@ This plugin exposes utility functions to enhance coding Go in Neovim.
 - __BuildCurrPackage__: Build the package in the current dir. Takes the same optional opts table as `RunCurrTest`.
 - __OrgBufImports__: Update imports of the current buffer.
 - __SignatureInStatusLine__: Shows the element under the cursor signature info on hover in the status line.
-- __AddTagToField__: Adds go tag element to the struct field under the cursor, can handle exisiting elements. If no value is passed the snake cased field name will be the element value.
-- __AddTagsToStruct__: Adds go tag element to all fields inside the struct under the cursor, can handle exisiting elements. If no value is passed the snake cased field name will be the element value.
-- __RemoveTagFromField__: Removes a tag element from the field under the cursor.
-- __RemoveTagsFromStruct__: Removes a tag element from all the fields inside the struct under the cursor.
+- __AddTagToField__: Adds go tag element to the struct field under the cursor, can handle exisiting elements. Prompts for the tag name via a fuzzy-searchable Telescope picker of common names (json, yaml, db, validate, xml) — typing something that doesn't match any of them uses what you typed instead — then the tag value through the same kind of prompt (empty defaults to the snake cased field name). Both fall back to plain `vim.ui.input` prompts if telescope.nvim isn't installed.
+- __AddTagsToStruct__: Adds go tag element to all fields inside the struct under the cursor, can handle exisiting elements. Same prompts as `AddTagToField`. If no value is passed the snake cased field name will be the element value.
+- __RemoveTagFromField__: Removes a tag element from the field under the cursor. Same prompts as `AddTagToField`.
+- __RemoveTagsFromStruct__: Removes a tag element from all the fields inside the struct under the cursor. Same prompts as `AddTagToField`.
 
 ## Dependencies
 
 - [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter)
 - [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig)
 - [nui.nvim](https://github.com/MunifTanjim/nui.nvim)
-- [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) — optional, only needed if you pass `{ telescope = true }` to browse test/build failures through it instead of the plain quickfix list
+- [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) — optional: used for the tag name/value prompts (`AddTagToField` & co.), and for browsing test/build failures when you pass `{ telescope = true }`. Falls back to plain `vim.ui.input`/the quickfix list if it isn't installed.
 
 ## Install
 

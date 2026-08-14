@@ -14,7 +14,7 @@ Living list of TUI/usability improvement ideas for ardango.nvim. Check items off
 - [x] Configurable popup (border, size, position) via `setup()` — `require("ardango").setup({ popup = { border, size, relative, position } })`, passed straight through to `nui.Popup`
 
 ## Struct tag editing (`lua/ardango/struct_tag.lua`)
-- [ ] `vim.ui.select` for common tag names (json, yaml, db, validate, xml)
+- [x] Picker for common tag names (json, yaml, db, validate, xml) — fuzzy-searchable Telescope picker; typing something with no match uses what you typed. The tag-value prompt afterward uses the same Telescope-prompt mechanism (not a plain `vim.ui.input` cmdline drop) so the flow feels consistent end to end; both fall back to plain `vim.ui.input` if telescope.nvim isn't installed. Used by all four Add/Remove tag commands. Fixed a latent bug as part of this: cancelling the old free-text prompt on the Remove commands passed `nil` straight through and silently removed the *entire* tag; the picker now just no-ops on cancel.
 - [ ] Toggle common tag options (omitempty, "-") as a checklist
 - [ ] Visual-mode support for tag add/remove across multiple fields
 - [ ] Live preview of resulting tag string before committing
