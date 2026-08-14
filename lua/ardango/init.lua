@@ -1,6 +1,11 @@
 local ui = require('ardango.ui')
+local config = require('ardango.config')
 
 local M = {}
+
+-- setup lets a user override plugin-wide config - currently just the
+-- results popup's border/size/relative/position. See ardango.config.
+M.setup = config.setup
 
 -- Selects all test functions in the buffer
 -- and captures their names.

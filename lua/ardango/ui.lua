@@ -1,5 +1,6 @@
 local Popup = require('nui.popup')
 local nuievent = require('nui.utils.autocmd').event
+local config = require('ardango.config')
 local api = vim.api
 
 local M = {}
@@ -103,16 +104,18 @@ M.show_popup = function(data, base_dir)
     api.nvim_buf_set_lines(bufnr, 0, -1, false, data)
     highlight_results(bufnr, data)
 
-    -- Create the popup. winhighlight is pinned explicitly so the popup
-    -- always renders with the normal editor colors, regardless of what a
-    -- colorscheme/terminal does with NormalFloat/FloatBorder.
+    -- Create the popup. border/size/relative/position come from
+    -- ardango.config (see M.setup); winhighlight is pinned explicitly so
+    -- the popup always renders with the normal editor colors, regardless
+    -- of what a colorscheme/terminal does with NormalFloat/FloatBorder.
+    local popup_config = config.options.popup
     local popup = Popup {
-      relative = "cursor",
-      position = 0,
-      size = "50%",
+      relative = popup_config.relative,
+      position = popup_config.position,
+      size = popup_config.size,
       enter = true,
       bufnr = bufnr,
-      border = "rounded",
+      border = popup_config.border,
       win_options = {
         winhighlight = "Normal:Normal,FloatBorder:Normal",
       },

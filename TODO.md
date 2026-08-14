@@ -11,7 +11,7 @@ Living list of TUI/usability improvement ideas for ardango.nvim. Check items off
 - [x] Optional `opts.verbose` — list each passing test as a single green line (`go test -v`, filtered to `--- PASS`/`--- FAIL` lines, `=== RUN` noise stripped) instead of only showing failures
 - [x] Reuse one result buffer/window instead of a new scratch buffer per run — persists across calls; a still-open popup from a previous run is closed (not stacked) before the next one mounts
 - [x] More popup keymaps — `q` to close (alongside `<esc>`), `<CR>` to jump to the file:line under the cursor (same idea as quickfix's `<CR>`)
-- [ ] Configurable popup (border, size, position) via `setup()`
+- [x] Configurable popup (border, size, position) via `setup()` — `require("ardango").setup({ popup = { border, size, relative, position } })`, passed straight through to `nui.Popup`
 
 ## Struct tag editing (`lua/ardango/struct_tag.lua`)
 - [ ] `vim.ui.select` for common tag names (json, yaml, db, validate, xml)
@@ -20,7 +20,7 @@ Living list of TUI/usability improvement ideas for ardango.nvim. Check items off
 - [ ] Live preview of resulting tag string before committing
 
 ## Config & discoverability
-- [ ] `setup(opts)` entrypoint for plugin-wide config
+- [x] `setup(opts)` entrypoint for plugin-wide config — `lua/ardango/config.lua`; currently only covers the popup, easy to extend as more config shows up
 - [ ] `:checkhealth ardango` (treesitter go parser, nui.nvim, `go` binary in PATH)
 - [ ] Vim help docs (`doc/ardango.txt`)
 - [ ] Replace remaining `print()` calls with `vim.notify`

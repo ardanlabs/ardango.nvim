@@ -36,6 +36,23 @@ Plug 'ardanlabs/ardango.nvim'
 
 ## How to use
 
+### Configuring the results popup:
+
+```lua
+require("ardango").setup({
+  popup = {
+    border = "single",    -- default: "rounded"
+    size = "80%",         -- default: "50%"
+    relative = "editor",  -- default: "cursor"
+    position = "50%",     -- default: 0
+  },
+})
+```
+
+`setup()` is optional — everything works with its defaults if you skip it.
+Fields are passed straight through to `nui.Popup` (`:h nui.popup`), so any
+shape it accepts for `size`/`position` works here too.
+
 ### Setting as an autocommand:
 
 ```lua
