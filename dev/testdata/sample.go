@@ -3,9 +3,9 @@ package testdata
 // Person is a sample struct used to exercise the struct-tag commands
 // (AddTagToField, AddTagsToStruct, RemoveTagFromField, RemoveTagsFromStruct).
 type Person struct {
-	Name  string `json:"name"`
-	Age   int `json:"age"`
-	Email string `json:"email"`
+	Name  string
+	Age   int
+	Email string
 }
 
 // Greet returns a greeting for the given person.
