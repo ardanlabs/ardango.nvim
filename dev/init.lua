@@ -10,6 +10,14 @@ vim.opt.rtp:prepend(here .. "/.deps/nui.nvim")
 vim.opt.rtp:prepend(here .. "/.deps/nvim-treesitter")
 vim.opt.rtp:prepend(root)
 
+-- telescope.nvim's current release needs Neovim 0.11+ and errors loudly
+-- on load otherwise; skip it on older Neovim so opts.telescope just falls
+-- back to the plain quickfix list instead of an unrelated startup error.
+if vim.fn.has("nvim-0.11") == 1 then
+  vim.opt.rtp:prepend(here .. "/.deps/plenary.nvim")
+  vim.opt.rtp:prepend(here .. "/.deps/telescope.nvim")
+end
+
 require("nvim-treesitter.configs").setup({
   ensure_installed = { "go" },
   sync_install = false,

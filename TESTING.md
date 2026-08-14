@@ -7,27 +7,42 @@ that reliably, including the environment gotchas that aren't obvious.
 
 ## One-time setup
 
+Use this repo's own Nix devShell — `shell.nix`/`flake.nix` pin a Neovim
+new enough for everything below (0.12.x as of writing, well above
+Telescope's 0.11+ floor):
+
 ```sh
-./dev/setup.sh
+nix develop --command ./dev/setup.sh
 ```
 
-Clones `nui.nvim` and `nvim-treesitter` into `dev/.deps/` (gitignored) and
-installs the Go treesitter parser via `TSInstallSync`. Safe to re-run.
+(`nix-shell --run ./dev/setup.sh` works the same if you're not using
+flakes.) Outside that shell, plain `./dev/setup.sh` also works as long as
+whatever `nvim` is on your `PATH` is reasonably recent — it warns
+(doesn't fail) if it detects something older than 0.11, and honors
+`NVIM=/path/to/nvim` to target a specific binary instead of `PATH`.
+
+This clones `nui.nvim`, `nvim-treesitter`, `plenary.nvim`, and
+`telescope.nvim` into `dev/.deps/` (gitignored) and installs the Go
+treesitter parser via `TSInstallSync`. Safe to re-run.
 
 `dev/setup.sh` pins `nvim-treesitter` to its **`master`** branch, not
-`main`. `main` is a rewrite that requires a much newer Neovim than may be
-installed; `master` has the `:TSInstall`/`configs.setup()` API the fixture
-config relies on.
+`main`. `main` is a rewrite that needs a much newer Neovim; `master` has
+the `:TSInstall`/`configs.setup()` API the fixture config relies on and
+works fine on anything reasonably recent. `telescope.nvim` and
+`plenary.nvim` are cloned unpinned (latest).
 
 ## Launching
 
 Always launch from inside `dev/testdata/` — that's where the fixture
 `go.mod` lives, and `RunCurrTest`/`BuildCurrPackage` run `go` relative to
-Neovim's cwd, not the buffer's directory. Always pass `--clean`:
+Neovim's cwd, not the buffer's directory. Always pass `--clean`. Same as
+setup, prefer running it inside the devShell:
 
 ```sh
 cd dev/testdata
-nvim --clean -u ../init.lua sample_test.go
+nix develop --command nvim --clean -u ../init.lua sample_test.go
+# or, outside the devShell, provided your own `nvim` is recent enough:
+nvim --clean -u ../init.lua sample_test.go   # or your modern $NVIM
 ```
 
 **Why `--clean` is required:** Neovim sources `plugin/` and
@@ -66,9 +81,8 @@ the README recommends:
   with no tags) so the fixture stays clean for the next run.
 - `sample_test.go` — `TestGreetPass` (put the cursor inside it, run
   `<leader>gt`, expect a plain success notification, no popup/quickfix)
-  and `TestGreetFail` (same, but expect the failure to open the quickfix
-  list with a `file|line col N| message` entry that jumps to the failing
-  `t.Fatalf` line on `<CR>`).
+  and `TestGreetFail` (same, but expect the failure text in a popup by
+  default — the quickfix list is opt-in, see below).
 - `broken_example.go.txt` — inert by default so `go build ./...` stays
   green in the fixture module. To exercise `BuildCurrPackage`'s failure
   path:
@@ -87,9 +101,11 @@ or `lua/ardango/struct_tag.lua`:
 | Command | Fixture / cursor position | Expected result |
 |---|---|---|
 | `RunCurrTest` | inside `TestGreetPass` | notify: `go test: TestGreetPass: ok ...` |
-| `RunCurrTest` | inside `TestGreetFail` | quickfix opens, one entry at the `t.Fatalf` line; `<CR>` jumps there |
-| `BuildCurrPackage` | `broken.go` present (see above) | quickfix opens with an `undefined: ...` entry |
+| `RunCurrTest` | inside `TestGreetFail` | popup with the raw failure text (default; quickfix is opt-in via `opts.quickfix`, not currently wired to a keymap) |
+| `BuildCurrPackage` | `broken.go` present (see above) | popup with the `undefined: ...` error |
 | `BuildCurrPackage` | only `sample.go`/`sample_test.go` present | notify: `go build: success` |
+| `ui.show_results(data, { quickfix = true, ... })` (called directly, e.g. via `:lua`) | same failing output as above | quickfix list populated and opened (`opts.open_qf = false` populates without opening); doesn't clobber an existing quickfix list in place — pushes a new one onto the stack (`:colder` recovers the previous one) |
+| `ui.show_results(data, { telescope = true, ... })` (called directly) | same failing output as above | Telescope opens a "Results" picker with the failure(s) as entries and a preview of the source at that location; falls back to the plain quickfix list (with a notification) if telescope.nvim isn't on `rtp` |
 | `AddTagsToStruct` | cursor **inside the struct body** (a field line, not the `type X struct {` line — the `struct_type` node starts at `struct`, not `type`) | prompts for tag name/value, adds `name:"value"` to every field's tag |
 | `AddTagToField` | cursor on one field line | same, but only that field |
 | `RemoveTagsFromStruct` / `RemoveTagFromField` | struct/field with tags already present | removes the named tag element (or the whole tag, if no name given) |

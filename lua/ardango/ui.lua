@@ -58,13 +58,19 @@ M.show_popup = function(data)
     local popBuffer = api.nvim_create_buf(false, false)
     api.nvim_buf_set_lines(popBuffer, 0, -1, false, data)
 
-    -- Create the popup
+    -- Create the popup. winhighlight is pinned explicitly so the popup
+    -- always renders with the normal editor colors, regardless of what a
+    -- colorscheme/terminal does with NormalFloat/FloatBorder.
     local popup = Popup {
       relative = "cursor",
       position = 0,
       size = "50%",
       enter = true,
       bufnr = popBuffer,
+      border = "rounded",
+      win_options = {
+        winhighlight = "Normal:Normal,FloatBorder:Normal",
+      },
     }
 
     popup:mount()
@@ -81,13 +87,39 @@ M.show_popup = function(data)
   end
 end
 
+-- Opens the current quickfix list through Telescope's built-in quickfix
+-- picker (fuzzy-searchable list + a preview of the location) instead of
+-- a plain :copen. Returns false if telescope.nvim isn't installed, so
+-- the caller can fall back to :copen.
+local function open_telescope_quickfix()
+  local ok, telescope_builtin = pcall(require, 'telescope.builtin')
+  if not ok then
+    return false
+  end
+
+  telescope_builtin.quickfix({})
+  return true
+end
+
 -- Show results handles the output of a finished job:
---   - no output at all           -> success notification.
---   - only "ok"/"PASS" lines     -> success notification with the summary.
---   - file:line references found -> populate + open the quickfix list.
---   - anything else              -> fall back to the raw text popup.
--- opts.label    - prefix used in notifications/quickfix title.
--- opts.base_dir - directory used to resolve relative file paths.
+--   - no output at all       -> success notification.
+--   - only "ok"/"PASS" lines -> success notification with the summary.
+--   - anything else          -> raw text popup by default, or (with
+--                                opts.quickfix/opts.telescope) the
+--                                quickfix list when file:line references
+--                                are parseable.
+-- opts.label     - prefix used in notifications/quickfix title.
+-- opts.base_dir  - directory used to resolve relative file paths.
+-- opts.quickfix  - use the quickfix list instead of the popup for
+--                  parseable output (default false, since populating the
+--                  quickfix list competes with whatever else uses it,
+--                  e.g. :grep or LSP diagnostics).
+-- opts.open_qf   - whether to :copen when the quickfix list gets
+--                  populated (default true, only relevant with
+--                  opts.quickfix and ignored if opts.telescope is used).
+-- opts.telescope - browse the quickfix list through Telescope instead of
+--                  :copen (implies opts.quickfix); falls back to a plain
+--                  :copen if telescope.nvim isn't installed.
 M.show_results = function(data, opts)
   opts = opts or {}
   local label = opts.label or "ardango"
@@ -104,18 +136,35 @@ M.show_results = function(data, opts)
     return
   end
 
-  local qf_items = M.build_qf_items(lines, opts.base_dir or vim.fn.getcwd())
-  if #qf_items > 0 then
-    vim.fn.setqflist({}, ' ', {
-      title = label,
-      items = qf_items,
-    })
-    vim.cmd("copen")
-    vim.notify(
-      string.format("%s: %d issue(s) found", label, #qf_items),
-      vim.log.levels.WARN
-    )
-    return
+  if opts.quickfix or opts.telescope then
+    local qf_items = M.build_qf_items(lines, opts.base_dir or vim.fn.getcwd())
+    if #qf_items > 0 then
+      vim.fn.setqflist({}, ' ', {
+        title = label,
+        items = qf_items,
+      })
+
+      vim.notify(
+        string.format("%s: %d issue(s) found", label, #qf_items),
+        vim.log.levels.WARN
+      )
+
+      if opts.telescope and open_telescope_quickfix() then
+        return
+      end
+      if opts.telescope then
+        vim.notify(label .. ": telescope.nvim not found, showing quickfix list instead", vim.log.levels.WARN)
+      end
+
+      local open_qf = opts.open_qf
+      if open_qf == nil then
+        open_qf = true
+      end
+      if open_qf then
+        vim.cmd("copen")
+      end
+      return
+    end
   end
 
   M.show_popup(lines)

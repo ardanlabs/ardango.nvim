@@ -18,6 +18,7 @@ This plugin exposes utility functions to enhance coding Go in Neovim.
 - [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter)
 - [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig)
 - [nui.nvim](https://github.com/MunifTanjim/nui.nvim)
+- [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) — optional, only needed if you pass `{ telescope = true }` to browse test/build failures through it instead of the plain quickfix list
 
 ## Install
 

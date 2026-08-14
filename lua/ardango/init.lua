@@ -20,8 +20,9 @@ end
 
 local api = vim.api
 
--- Runs the test under the cursor and shows the results
--- as a quickfix list (or popup, if nothing is parseable).
+-- Runs the test under the cursor and shows the results in a popup
+-- (pass opts.quickfix = true to ui.show_results to use the quickfix
+-- list instead).
 M.RunCurrTest = function()
   local current_dir = vim.fn.expand('%:h')
   local cursor = api.nvim_win_get_cursor(0)

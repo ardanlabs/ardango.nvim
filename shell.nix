@@ -9,7 +9,7 @@ pkgs.mkShell {
       p.zsh
       p.neovim
       p.lua5_3
-      p.sumneko-lua-language-server
+      p.lua-language-server
     ];
 }
 
