@@ -67,13 +67,32 @@ local function highlight_results(bufnr, lines)
   end
 end
 
--- Show popup opens up a popup showing the received data.
+-- Reused across runs instead of creating a new scratch buffer/popup every
+-- time, so repeated RunCurrTest/BuildCurrPackage calls don't pile up
+-- buffers or stack overlapping popup windows.
+local result_popup_state = { bufnr = nil, popup = nil }
+
+local function result_buf()
+  if not result_popup_state.bufnr or not api.nvim_buf_is_valid(result_popup_state.bufnr) then
+    result_popup_state.bufnr = api.nvim_create_buf(false, false)
+  end
+  return result_popup_state.bufnr
+end
+
+-- Show popup opens up a popup showing the received data, reusing the
+-- previous run's buffer/window if there is one.
 M.show_popup = function(data)
   if data and not (data[1] == "") then
-    -- Write into a hidden buffer.
-    local popBuffer = api.nvim_create_buf(false, false)
-    api.nvim_buf_set_lines(popBuffer, 0, -1, false, data)
-    highlight_results(popBuffer, data)
+    -- Close a still-open popup from a previous run rather than stacking
+    -- a new one on top of it. Popup:unmount() is a no-op if not mounted.
+    if result_popup_state.popup then
+      result_popup_state.popup:unmount()
+    end
+
+    local bufnr = result_buf()
+    api.nvim_buf_clear_namespace(bufnr, RESULT_NS, 0, -1)
+    api.nvim_buf_set_lines(bufnr, 0, -1, false, data)
+    highlight_results(bufnr, data)
 
     -- Create the popup. winhighlight is pinned explicitly so the popup
     -- always renders with the normal editor colors, regardless of what a
@@ -83,22 +102,21 @@ M.show_popup = function(data)
       position = 0,
       size = "50%",
       enter = true,
-      bufnr = popBuffer,
+      bufnr = bufnr,
       border = "rounded",
       win_options = {
         winhighlight = "Normal:Normal,FloatBorder:Normal",
       },
     }
+    result_popup_state.popup = popup
 
     popup:mount()
 
     popup:on({ nuievent.BufLeave }, function()
-      api.nvim_buf_delete(popBuffer, { force = true })
       popup:unmount()
     end, { once = true })
 
     popup:map("n", "<esc>", function()
-      api.nvim_buf_delete(popBuffer, { force = true })
       popup:unmount()
     end, { silent = true })
   end
