@@ -20,10 +20,54 @@ end
 
 local api = vim.api
 
+-- Runs cmd, notifying when it starts and handing its combined
+-- stdout/stderr to ui.show_results (merged with opts) on exit.
+local function run_job(cmd, label, current_dir, opts)
+  vim.notify(label .. ": running...", vim.log.levels.INFO)
+
+  local output = {}
+  vim.fn.jobstart(cmd, {
+    stdout_buffered = true,
+    stderr_buffered = true,
+    on_stdout = function(_, data)
+      vim.list_extend(output, data or {})
+    end,
+    on_stderr = function(_, data)
+      vim.list_extend(output, data or {})
+    end,
+    on_exit = function()
+      local show_opts = vim.tbl_extend("force",
+        { label = label, base_dir = current_dir },
+        opts or {})
+      ui.show_results(output, show_opts)
+    end,
+  })
+end
+
+-- Collects the names of every Test* function declared in bufnr.
+local function test_names(bufnr)
+  local root = get_root(bufnr)
+  local names = {}
+  for _, node in test_query:iter_captures(root, bufnr, 0, -1) do
+    table.insert(names, vim.treesitter.get_node_text(node, bufnr))
+  end
+  return names
+end
+
+-- " -v" when opts.verbose is set (go test only prints a line per passing
+-- test, e.g. "--- PASS: TestFoo (0.00s)", with -v), otherwise "".
+local function verbose_flag(opts)
+  if opts and opts.verbose then
+    return " -v"
+  end
+  return ""
+end
+
 -- Runs the test under the cursor and shows the results in a popup by
 -- default. Pass opts.quickfix = true (or opts.telescope = true) to show
--- them in the quickfix list / a Telescope picker instead - see
--- ui.show_results for the full set of opts.
+-- them in the quickfix list / a Telescope picker instead, or
+-- opts.verbose = true to also list passing tests - see ui.show_results
+-- for the full set of opts.
 M.RunCurrTest = function(opts)
   local current_dir = vim.fn.expand('%:h')
   local cursor = api.nvim_win_get_cursor(0)
@@ -35,58 +79,42 @@ M.RunCurrTest = function(opts)
     if vim.treesitter.is_in_node_range(node:parent(), cursor[1] - 1, cursor[2]) then
       -- Gets the name through the node text.
       local test_name = vim.treesitter.get_node_text(node, bufnr)
-
-      vim.notify("go test: running " .. test_name .. "...", vim.log.levels.INFO)
-
-      local output = {}
-      -- Runs the go test tool, buffering output to hand off on exit.
-      vim.fn.jobstart(
-        "go test ./" .. current_dir .. " -run ^" .. test_name .. "$", {
-          stdout_buffered = true,
-          stderr_buffered = true,
-          on_stdout = function(_, data)
-            vim.list_extend(output, data or {})
-          end,
-          on_stderr = function(_, data)
-            vim.list_extend(output, data or {})
-          end,
-          on_exit = function()
-            local show_opts = vim.tbl_extend("force",
-              { label = "go test: " .. test_name, base_dir = current_dir },
-              opts or {})
-            ui.show_results(output, show_opts)
-          end,
-        })
+      run_job(
+        "go test ./" .. current_dir .. verbose_flag(opts) .. " -run ^" .. test_name .. "$",
+        "go test: " .. test_name, current_dir, opts)
     end
   end
+end
+
+-- Runs every Test* function declared in the current buffer. Same opts as
+-- RunCurrTest.
+M.RunFileTests = function(opts)
+  local current_dir = vim.fn.expand('%:h')
+  local bufnr = api.nvim_get_current_buf()
+  local names = test_names(bufnr)
+
+  if #names == 0 then
+    vim.notify("ardango: no tests found in this file", vim.log.levels.WARN)
+    return
+  end
+
+  run_job(
+    "go test ./" .. current_dir .. verbose_flag(opts) .. " -run '^(" .. table.concat(names, "|") .. ")$'",
+    "go test: " .. #names .. " test(s) in file", current_dir, opts)
+end
+
+-- Runs every test in the current package (i.e. the whole current
+-- directory, not just the current file). Same opts as RunCurrTest.
+M.RunPackageTests = function(opts)
+  local current_dir = vim.fn.expand('%:h')
+  run_job("go test ./" .. current_dir .. verbose_flag(opts), "go test: package", current_dir, opts)
 end
 
 -- Build the package in the current dir, showing the results in a popup by
 -- default. Same opts as RunCurrTest.
 M.BuildCurrPackage = function(opts)
   local current_dir = vim.fn.expand('%:h')
-
-  vim.notify("go build: running...", vim.log.levels.INFO)
-
-  local output = {}
-  -- Runs the go build, buffering output to hand off on exit.
-  vim.fn.jobstart(
-    "go build -o /dev/null ./" .. current_dir, {
-      stdout_buffered = true,
-      stderr_buffered = true,
-      on_stdout = function(_, data)
-        vim.list_extend(output, data or {})
-      end,
-      on_stderr = function(_, data)
-        vim.list_extend(output, data or {})
-      end,
-      on_exit = function()
-        local show_opts = vim.tbl_extend("force",
-          { label = "go build", base_dir = current_dir },
-          opts or {})
-        ui.show_results(output, show_opts)
-      end,
-    })
+  run_job("go build -o /dev/null ./" .. current_dir, "go build", current_dir, opts)
 end
 
 -- OrgImports is a function to update imports of the current buffer.

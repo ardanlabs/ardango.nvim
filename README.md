@@ -4,7 +4,9 @@ This plugin exposes utility functions to enhance coding Go in Neovim.
 
 ## Exposed functions:
 
-- __RunCurrTest__: Runs the test under the cursor and shows the results in a popup window by default. Takes an optional opts table (`{ quickfix = true }` or `{ telescope = true }`) to show them in the quickfix list or a Telescope picker instead — see `lua/ardango/ui.lua`'s `show_results` for the full set of opts.
+- __RunCurrTest__: Runs the test under the cursor and shows the results in a popup window by default. Takes an optional opts table (`{ quickfix = true }` or `{ telescope = true }`) to show them in the quickfix list or a Telescope picker instead, or `{ verbose = true }` to also list passing tests as a single green line each (instead of only showing failures) — see `lua/ardango/ui.lua`'s `show_results` for the full set of opts.
+- __RunFileTests__: Runs every test declared in the current buffer. Same opts as `RunCurrTest`.
+- __RunPackageTests__: Runs every test in the current package (whole directory, not just the current file). Same opts as `RunCurrTest`.
 - __BuildCurrPackage__: Build the package in the current dir. Takes the same optional opts table as `RunCurrTest`.
 - __OrgBufImports__: Update imports of the current buffer.
 - __SignatureInStatusLine__: Shows the element under the cursor signature info on hover in the status line.
@@ -60,6 +62,10 @@ vim.keymap.set('n', '<leader>gq', function() ardango.RunCurrTest({ quickfix = tr
 -- Same, but browse failures via Telescope instead of a popup (needs
 -- telescope.nvim installed).
 vim.keymap.set('n', '<leader>gs', function() ardango.RunCurrTest({ telescope = true }) end, opts)
+-- Set the keymap to run every test in the current file.
+vim.keymap.set('n', '<leader>gf', ardango.RunFileTests, opts)
+-- Set the keymap to run every test in the current package.
+vim.keymap.set('n', '<leader>ga', ardango.RunPackageTests, opts)
 -- Set the keymap to build the package under the cursor.
 vim.keymap.set('n', '<leader>gp', ardango.BuildCurrPackage, opts)
 -- Adds tag element to the field under the cursor field.

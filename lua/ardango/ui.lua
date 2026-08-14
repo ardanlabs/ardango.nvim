@@ -39,7 +39,7 @@ M.build_qf_items = function(lines, base_dir)
 end
 
 local function is_success_line(line)
-  return line:match("^ok%s") ~= nil or line == "PASS"
+  return line:match("^ok%s") ~= nil or line == "PASS" or line:match("^%s*%-%-%- PASS:") ~= nil
 end
 
 local function all_success(lines)
@@ -137,6 +137,10 @@ end
 -- opts.telescope - browse the quickfix list through Telescope instead of
 --                  :copen (implies opts.quickfix); falls back to a plain
 --                  :copen if telescope.nvim isn't installed.
+-- opts.verbose   - list passing tests too (as a single green line each),
+--                  instead of just failures. Only useful together with a
+--                  caller that adds `go test`'s -v flag when this is set
+--                  (RunCurrTest/RunFileTests/RunPackageTests do).
 M.show_results = function(data, opts)
   opts = opts or {}
   local label = opts.label or "ardango"
@@ -148,7 +152,7 @@ M.show_results = function(data, opts)
     return
   end
 
-  if all_success(lines) then
+  if not opts.verbose and all_success(lines) then
     vim.notify(label .. ": " .. table.concat(lines, " "), vim.log.levels.INFO)
     return
   end

@@ -8,6 +8,7 @@ Living list of TUI/usability improvement ideas for ardango.nvim. Check items off
 - [x] Optional Telescope integration (`opts.telescope`) — browse failures as a fuzzy-searchable list with a preview of the failing location, via Telescope's built-in `quickfix()` picker; falls back to plain quickfix if telescope.nvim isn't installed
 - [x] Wire `opts.quickfix`/`opts.telescope` up to something a user can actually flip — `RunCurrTest`/`BuildCurrPackage` now take an optional opts table forwarded to `ui.show_results`; example `<leader>gq`/`<leader>gs` keymaps in the README and `dev/init.lua`
 - [x] Syntax highlight PASS/FAIL/error lines in the fallback popup — `DiagnosticOk`/`DiagnosticError` (line-level, via `nvim_buf_add_highlight`)
+- [x] Optional `opts.verbose` — list each passing test as a single green line (`go test -v`, filtered to `--- PASS`/`--- FAIL` lines, `=== RUN` noise stripped) instead of only showing failures
 - [ ] Reuse one result buffer/window instead of a new scratch buffer per run
 - [ ] More popup keymaps (`q` to close, `<CR>` to jump to quickfix entry)
 - [ ] Configurable popup (border, size, position) via `setup()`
@@ -26,4 +27,4 @@ Living list of TUI/usability improvement ideas for ardango.nvim. Check items off
 
 ## Editor integration
 - [ ] `SignatureInStatusLine` → optional floating hover window
-- [ ] Command to run all tests in file/package, not just cursor under
+- [x] Command to run all tests in file/package, not just cursor under — `RunFileTests`/`RunPackageTests`
