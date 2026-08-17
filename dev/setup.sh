@@ -38,5 +38,12 @@ fi
 
 "$nvim" --clean --headless -u "$here/init.lua" -c "TSInstallSync! go" -c "qa"
 
+# markdown/markdown_inline aren't required by ardango.nvim itself, but
+# SignatureInStatusLine's opts.float opens the hover content through
+# Neovim's own vim.lsp.util.open_floating_preview, which is markdown -
+# without these installed, Neovim's built-in highlighter throws a noisy
+# (but harmless) error on any hover containing a fenced code block.
+"$nvim" --clean --headless -u "$here/init.lua" -c "TSInstallSync! markdown markdown_inline" -c "qa"
+
 echo "dev environment ready. Try:"
 echo "  $nvim --clean -u dev/init.lua dev/testdata/sample_test.go"

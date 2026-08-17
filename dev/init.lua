@@ -43,3 +43,5 @@ vim.keymap.set("n", "<leader>trs", ardango.RemoveTagsFromStruct, opts)
 -- while still in Visual mode, before the marks are up to date.
 vim.keymap.set("x", "<leader>tavf", "<Esc>:lua require('ardango').AddTagToVisualFields()<CR>", opts)
 vim.keymap.set("x", "<leader>trvf", "<Esc>:lua require('ardango').RemoveTagFromVisualFields()<CR>", opts)
+vim.keymap.set("n", "<leader>gh", function() ardango.SignatureInStatusLine(1000) end, opts)
+vim.keymap.set("n", "<leader>gH", function() ardango.SignatureInStatusLine(1000, { float = true }) end, opts)

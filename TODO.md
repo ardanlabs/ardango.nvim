@@ -26,5 +26,5 @@ Living list of TUI/usability improvement ideas for ardango.nvim. Check items off
 - [x] Replace remaining `print()` calls with `vim.notify` — `struct_tag.lua`'s "not inside a struct/field declaration" messages now go through `vim.notify(..., WARN)` with the `ardango: ` prefix used elsewhere; `SignatureInStatusLine`'s `print(definition)` now uses `vim.notify(..., INFO)`.
 
 ## Editor integration
-- [ ] `SignatureInStatusLine` → optional floating hover window
+- [x] `SignatureInStatusLine` → optional floating hover window — `{ float = true }` opens the full hover content via `vim.lsp.util.open_floating_preview` (the same helper `vim.lsp.buf.hover()` uses) instead of the default one-line `vim.notify` summary. `dev/setup.sh` now also installs the `markdown`/`markdown_inline` parsers, since Neovim's own highlighter needs them for the floating content and otherwise throws a harmless-but-noisy error on any hover with a fenced code block.
 - [x] Command to run all tests in file/package, not just cursor under — `RunFileTests`/`RunPackageTests`

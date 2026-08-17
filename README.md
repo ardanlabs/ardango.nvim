@@ -9,7 +9,7 @@ This plugin exposes utility functions to enhance coding Go in Neovim.
 - __RunPackageTests__: Runs every test in the current package (whole directory, not just the current file). Same opts as `RunCurrTest`.
 - __BuildCurrPackage__: Build the package in the current dir. Takes the same optional opts table as `RunCurrTest`.
 - __OrgBufImports__: Update imports of the current buffer.
-- __SignatureInStatusLine__: Shows the element under the cursor signature info on hover in the status line.
+- __SignatureInStatusLine__: Shows the element under the cursor's signature info on hover. By default a one-line summary is shown via `vim.notify` (close to the statusline); pass `{ float = true }` to instead open a floating window with the full hover content, via the same `vim.lsp.util.open_floating_preview` `vim.lsp.buf.hover()` itself uses.
 - __AddTagToField__: Adds go tag element to the struct field under the cursor, can handle exisiting elements. Prompts for the tag name via a fuzzy-searchable Telescope picker of common names (json, yaml, db, validate, xml) — typing something that doesn't match any of them uses what you typed instead. Then a single combined prompt handles both the tag value and its common options: `<Tab>`-toggle any of `omitempty`/`-`/`required` (they stay selected as you type, even though typing filters the visible list), then type the value (empty defaults to the snake cased field name) and confirm with `<CR>`. Picking `-` wins over everything else, since a bare `-` means "skip this field" per Go tag convention. Falls back to plain `vim.ui.input` prompts (`value,option1,option2`) if telescope.nvim isn't installed.
 - __AddTagsToStruct__: Adds go tag element to all fields inside the struct under the cursor, can handle exisiting elements. Same prompts as `AddTagToField`. If no value is passed the snake cased field name will be the element value.
 - __RemoveTagFromField__: Removes a tag element from the field under the cursor. Same prompts as `AddTagToField`.
@@ -108,4 +108,8 @@ vim.keymap.set('n', '<leader>trs', ardango.RemoveTagsFromStruct, { buffer = 0 })
 -- while still in Visual mode, before the marks are up to date.
 vim.keymap.set('x', '<leader>tavf', "<Esc>:lua require('ardango').AddTagToVisualFields()<CR>", { buffer = 0 })
 vim.keymap.set('x', '<leader>trvf', "<Esc>:lua require('ardango').RemoveTagFromVisualFields()<CR>", { buffer = 0 })
+-- Shows the signature of the element under the cursor as a one-line
+-- notification, or in a floating window instead.
+vim.keymap.set('n', '<leader>gh', function() ardango.SignatureInStatusLine(1000) end, opts)
+vim.keymap.set('n', '<leader>gH', function() ardango.SignatureInStatusLine(1000, { float = true }) end, opts)
 ```

@@ -97,9 +97,15 @@ ardango.OrgBufImports({wait_ms})                        *ardango.OrgBufImports*
     LSP client's source.organizeImports code action, waiting up to
     {wait_ms} milliseconds for a response.
 
-ardango.SignatureInStatusLine({wait_ms})          *ardango.SignatureInStatusLine*
-    Shows the signature/definition of the element under the cursor (via
-    LSP hover) in the statusline, waiting up to {wait_ms} milliseconds.
+ardango.SignatureInStatusLine({wait_ms}, {opts})  *ardango.SignatureInStatusLine*
+    Shows the signature/definition of the element under the cursor via
+    LSP hover, waiting up to {wait_ms} milliseconds. {opts} is an
+    optional table:
+      - float (boolean) instead of a one-line vim.notify summary
+              (close to the statusline), open a floating window with
+              the full hover content, via the same
+              vim.lsp.util.open_floating_preview vim.lsp.buf.hover()
+              itself uses.
 
 ardango.AddTagToField()                                  *ardango.AddTagToField*
     Adds a tag element to the struct field under the cursor (handles

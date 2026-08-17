@@ -109,6 +109,35 @@ or `lua/ardango/struct_tag.lua`:
 | `AddTagsToStruct` | cursor **inside the struct body** (a field line, not the `type X struct {` line — the `struct_type` node starts at `struct`, not `type`) | prompts for tag name/value, adds `name:"value"` to every field's tag |
 | `AddTagToField` | cursor on one field line | same, but only that field |
 | `RemoveTagsFromStruct` / `RemoveTagFromField` | struct/field with tags already present | removes the named tag element (or the whole tag, if no name given) |
+| `SignatureInStatusLine(wait_ms)` | cursor on an identifier, LSP client attached (`dev/init.lua` doesn't wire one up - either attach `gopls` yourself or stub `vim.lsp.buf_request_sync`, see below) | one-line `vim.notify` with the hover's second line |
+| `SignatureInStatusLine(wait_ms, { float = true })` | same | floating window with the full hover content, via `vim.lsp.util.open_floating_preview` (same as `vim.lsp.buf.hover()`) |
+
+Testing `SignatureInStatusLine` without a real LSP client: `dev/init.lua`
+doesn't attach `gopls` (no `nvim-lspconfig` in `dev/.deps/`), so the
+easiest way to exercise it is stubbing `vim.lsp.buf_request_sync` to
+return a canned hover response, e.g. via `:luafile` on a scratch script:
+
+```lua
+vim.lsp.buf_request_sync = function()
+  return {
+    [1] = { result = { contents = { kind = "markdown", value = "```go\nfunc Foo()\n```" } } },
+  }
+end
+require('ardango').SignatureInStatusLine(1000)
+```
+
+Note the shape: `result.contents.value`, not `result.value` - easy to get
+wrong, the function silently shows nothing (no error) if the stub doesn't
+match, since indexing a plain Lua string with `.value` just yields `nil`
+rather than erroring.
+
+`{ float = true }` opens the hover through Neovim's own markdown
+highlighter - if the `markdown`/`markdown_inline` treesitter parsers
+aren't installed (only `go` is required by ardango.nvim itself), a fenced
+code block in the hover content triggers a noisy but harmless
+`Decoration provider "conceal_line"` error from Neovim's highlighter, not
+from ardango.nvim. `dev/setup.sh` installs both parsers to avoid this in
+the dev sandbox.
 
 ## Verifying via tmux (for an agent/CI-less environment)
 

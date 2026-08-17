@@ -138,23 +138,35 @@ M.OrgBufImports = function(wait_ms)
   end
 end
 
--- SignatureInStatusLine shows the element under the cursor
--- signature info on hover in the status line.
-M.SignatureInStatusLine = function(wait_ms)
+-- SignatureInStatusLine shows the element under the cursor's signature
+-- info on hover. By default a one-line summary is shown via vim.notify
+-- (close to the statusline); opts.float = true instead opens a floating
+-- window with the full hover content, via the same
+-- vim.lsp.util.open_floating_preview vim.lsp.buf.hover() itself uses -
+-- syntax-highlighted, auto-closes on cursor move, etc.
+M.SignatureInStatusLine = function(wait_ms, opts)
+  opts = opts or {}
   local params = vim.lsp.util.make_position_params()
   local result = vim.lsp.buf_request_sync(0, "textDocument/hover", params, wait_ms)
   for _, res in pairs(result or {}) do
     for _, r in pairs(res or {}) do
       for _, elem in pairs(r or {}) do
         if elem.value ~= nil then
-          local lines = elem.value:gmatch("([^\r\n]+)\r?\n?")
-          -- throw away the first line of the iterator.
-          lines()
-          -- print the actual definition.
-          local definition = lines()
-          vim.schedule(function()
-            vim.notify(definition, vim.log.levels.INFO)
-          end)
+          if opts.float then
+            vim.schedule(function()
+              vim.lsp.util.open_floating_preview(vim.split(elem.value, '\n'), 'markdown',
+                { border = config.options.popup.border })
+            end)
+          else
+            local lines = elem.value:gmatch("([^\r\n]+)\r?\n?")
+            -- throw away the first line of the iterator.
+            lines()
+            -- print the actual definition.
+            local definition = lines()
+            vim.schedule(function()
+              vim.notify(definition, vim.log.levels.INFO)
+            end)
+          end
         end
       end
     end
