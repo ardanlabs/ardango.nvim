@@ -250,13 +250,13 @@ local function add_elem_tag_to_field(elem_name, elem_value)
 
   -- not inside a struct...
   if not curr_struct then
-    print("sorry, not inside a struct declaration...")
+    vim.notify("ardango: not inside a struct declaration", vim.log.levels.WARN)
     return
   end
 
   local curr_field = get_current_field()
   if not curr_field then
-    print("sorry, not inside a struct field declaration...")
+    vim.notify("ardango: not inside a struct field declaration", vim.log.levels.WARN)
     return
   end
 
@@ -276,7 +276,7 @@ local function add_elem_tag_to_struct(elem_name, elem_value)
 
   -- not inside a struct...
   if curr_struct == nil then
-    print("sorry, not inside a struct declaration...")
+    vim.notify("ardango: not inside a struct declaration", vim.log.levels.WARN)
     return
   end
 
@@ -323,7 +323,7 @@ local function add_elem_tag_to_fields_in_range(elem_name, elem_value, start_row,
 
   -- not inside a struct...
   if curr_struct == nil then
-    print("sorry, not inside a struct declaration...")
+    vim.notify("ardango: not inside a struct declaration", vim.log.levels.WARN)
     return
   end
 
@@ -350,7 +350,7 @@ local function remove_tag_elem_from_fields_in_range(elem_name, start_row, end_ro
 
   -- not inside a struct...
   if curr_struct == nil then
-    print("sorry, not inside a struct declaration...")
+    vim.notify("ardango: not inside a struct declaration", vim.log.levels.WARN)
     return
   end
 
@@ -383,7 +383,7 @@ local function remove_from_struct_tag(elem_name)
 
   -- not inside a struct...
   if curr_struct == nil then
-    print("sorry, not inside a struct declaration...")
+    vim.notify("ardango: not inside a struct declaration", vim.log.levels.WARN)
     return
   end
 
@@ -398,13 +398,13 @@ local function remove_from_field_tag(elem_name)
 
   -- not inside a struct...
   if not curr_struct then
-    print("sorry, not inside a struct declaration...")
+    vim.notify("ardango: not inside a struct declaration", vim.log.levels.WARN)
     return
   end
 
   local curr_field = get_current_field()
   if not curr_field then
-    print("sorry, not inside a struct field declaration...")
+    vim.notify("ardango: not inside a struct field declaration", vim.log.levels.WARN)
     return
   end
 

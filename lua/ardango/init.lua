@@ -153,7 +153,7 @@ M.SignatureInStatusLine = function(wait_ms)
           -- print the actual definition.
           local definition = lines()
           vim.schedule(function()
-            print(definition)
+            vim.notify(definition, vim.log.levels.INFO)
           end)
         end
       end
