@@ -15,6 +15,13 @@ local test_query = vim.treesitter.query.parse('go', [[
   )
   ]])
 
+-- Selects all benchmark functions in the buffer and captures their names.
+local bench_query = vim.treesitter.query.parse('go', [[
+  (function_declaration
+    name: (identifier) @name (#match? @name "Benchmark*")
+  )
+  ]])
+
 -- Gets the treesitter root node of a buffer.
 local function get_root(bufnr)
   local parser = vim.treesitter.get_parser(bufnr, "go", {})
@@ -31,13 +38,27 @@ local api = vim.api
 -- job's output is ever meaningful to show at a time).
 local current_job = nil
 
+-- The most recently computed shell command (real run or opts.dry_run),
+-- from any Run*/BuildCurrPackage call. See CopyLastCmd.
+local last_cmd = nil
+
 -- Runs cmd, notifying when it starts and handing its combined
 -- stdout/stderr to ui.show_results (merged with opts) on exit. Stops any
 -- still-running previous job first, so spamming a Run.../Build... keymap
 -- doesn't leave overlapping `go` processes racing to populate the same
 -- result view - whichever happened to finish last would otherwise
 -- silently win, even if it was the stale one.
+--
+-- opts.dry_run - don't actually run cmd, just show what would run (still
+-- updates last_cmd, so a dry run can be followed by CopyLastCmd).
 local function run_job(cmd, label, current_dir, opts)
+  last_cmd = cmd
+
+  if opts and opts.dry_run then
+    vim.notify(label .. ": dry run: " .. cmd, vim.log.levels.INFO)
+    return
+  end
+
   if current_job then
     vim.fn.jobstop(current_job)
   end
@@ -138,11 +159,46 @@ M.RunPackageTests = function(opts)
   run_job("go test ./" .. current_dir .. verbose_flag(opts), "go test: package", current_dir, opts)
 end
 
+-- Runs the benchmark under the cursor and shows the results in a popup by
+-- default (opts.quickfix/opts.telescope work the same as RunCurrTest,
+-- though there's rarely a file:line to jump to in benchmark output;
+-- opts.verbose is ignored - go test has no verbose flag for benchmarks,
+-- their timing/alloc line prints unconditionally). Runs with -benchmem so
+-- allocation stats show alongside ns/op.
+M.RunCurrBenchmark = function(opts)
+  local current_dir = vim.fn.expand('%:h')
+  local cursor = api.nvim_win_get_cursor(0)
+  local bufnr = api.nvim_get_current_buf()
+  local root = get_root(bufnr)
+
+  for _, node in bench_query:iter_captures(root, bufnr, 0, -1) do
+    if vim.treesitter.is_in_node_range(node:parent(), cursor[1] - 1, cursor[2]) then
+      local bench_name = vim.treesitter.get_node_text(node, bufnr)
+      run_job(
+        "go test ./" .. current_dir .. " -run '^$' -bench '^" .. bench_name .. "$' -benchmem",
+        "go bench: " .. bench_name, current_dir, opts)
+    end
+  end
+end
+
 -- Build the package in the current dir, showing the results in a popup by
 -- default. Same opts as RunCurrTest.
 M.BuildCurrPackage = function(opts)
   local current_dir = vim.fn.expand('%:h')
   run_job("go build -o /dev/null ./" .. current_dir, "go build", current_dir, opts)
+end
+
+-- CopyLastCmd puts the most recently computed test/bench/build shell
+-- command (from any Run*/BuildCurrPackage call - opts.dry_run = true or a
+-- real run, either updates it) onto the system clipboard (the "+"
+-- register), so it can be pasted into a terminal and run manually.
+M.CopyLastCmd = function()
+  if not last_cmd then
+    vim.notify("ardango: no command run yet", vim.log.levels.WARN)
+    return
+  end
+  vim.fn.setreg('+', last_cmd)
+  vim.notify("ardango: copied to clipboard: " .. last_cmd, vim.log.levels.INFO)
 end
 
 -- OrgImports is a function to update imports of the current buffer.

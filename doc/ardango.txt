@@ -43,7 +43,10 @@ Example keymaps: >lua
     vim.keymap.set("n", "<leader>gt", ardango.RunCurrTest, opts)
     vim.keymap.set("n", "<leader>gf", ardango.RunFileTests, opts)
     vim.keymap.set("n", "<leader>ga", ardango.RunPackageTests, opts)
+    vim.keymap.set("n", "<leader>gb", ardango.RunCurrBenchmark, opts)
     vim.keymap.set("n", "<leader>gp", ardango.BuildCurrPackage, opts)
+    vim.keymap.set("n", "<leader>gd", function() ardango.RunCurrTest({ dry_run = true }) end, opts)
+    vim.keymap.set("n", "<leader>gc", ardango.CopyLastCmd, opts)
 
     vim.keymap.set("n", "<leader>taf", ardango.AddTagToField, { buffer = 0 })
     vim.keymap.set("n", "<leader>tas", ardango.AddTagsToStruct, { buffer = 0 })
@@ -78,6 +81,11 @@ ardango.RunCurrTest({opts})                                *ardango.RunCurrTest*
                     quickfix; falls back to the quickfix list if
                     telescope.nvim isn't installed)
       - verbose   (boolean) also list passing tests, one green line each
+      - dry_run   (boolean) don't run anything - just notify the exact
+                  go test/go build command that would run. Also works
+                  on RunFileTests/RunPackageTests/RunCurrBenchmark/
+                  BuildCurrPackage. Pair with |ardango.CopyLastCmd| to
+                  get that command onto the clipboard.
     See |ardango-configuration| for the popup's own settings.
 
 ardango.RunFileTests({opts})                              *ardango.RunFileTests*
@@ -88,9 +96,22 @@ ardango.RunPackageTests({opts})                        *ardango.RunPackageTests*
     Runs every test in the current package (the whole directory, not just
     the current file). Same {opts} as |ardango.RunCurrTest|.
 
+ardango.RunCurrBenchmark({opts})                      *ardango.RunCurrBenchmark*
+    Runs the benchmark under the cursor (go test -bench '^Name$' -run
+    '^$' -benchmem) and shows the ns/op and allocation stats in a popup
+    by default. Same {opts} as |ardango.RunCurrTest|, except
+    opts.verbose is a no-op - go test has no verbose flag for
+    benchmarks.
+
 ardango.BuildCurrPackage({opts})                      *ardango.BuildCurrPackage*
     Builds the package in the current directory. Same {opts} as
     |ardango.RunCurrTest|.
+
+ardango.CopyLastCmd()                                        *ardango.CopyLastCmd*
+    Copies the most recently computed go test/go build command (from
+    any Run*/BuildCurrPackage call above - a dry run or a real one,
+    either counts) onto the system clipboard (the "+" register), so it
+    can be pasted into a terminal and run manually.
 
 ardango.OrgBufImports({wait_ms})                        *ardango.OrgBufImports*
     Organizes/updates the imports of the current buffer via the attached

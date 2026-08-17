@@ -63,3 +63,12 @@ func TestManyMixed(t *testing.T) {
 		})
 	}
 }
+
+// BenchmarkGreet is a plain benchmark: put the cursor inside it and run
+// RunCurrBenchmark to see the ns/op and allocation stats.
+func BenchmarkGreet(b *testing.B) {
+	p := Person{Name: "Ardan"}
+	for i := 0; i < b.N; i++ {
+		Greet(p)
+	}
+}

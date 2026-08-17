@@ -68,7 +68,10 @@ than "fixed".
 the README recommends:
 
 - `<leader>gt` — `RunCurrTest`
+- `<leader>gb` — `RunCurrBenchmark`
 - `<leader>gp` — `BuildCurrPackage`
+- `<leader>gd` — `RunCurrTest({ dry_run = true })`
+- `<leader>gc` — `CopyLastCmd`
 - `<leader>taf` / `<leader>tas` — add tag to field / struct
 - `<leader>trf` / `<leader>trs` — remove tag from field / struct
 
@@ -82,7 +85,8 @@ the README recommends:
 - `sample_test.go` — `TestGreetPass` (put the cursor inside it, run
   `<leader>gt`, expect a plain success notification, no popup/quickfix)
   and `TestGreetFail` (same, but expect the failure text in a popup by
-  default — the quickfix list is opt-in, see below).
+  default — the quickfix list is opt-in, see below). `BenchmarkGreet` is
+  for `RunCurrBenchmark`/`<leader>gb`.
 - `broken_example.go.txt` — inert by default so `go build ./...` stays
   green in the fixture module. To exercise `BuildCurrPackage`'s failure
   path:
@@ -102,6 +106,9 @@ or `lua/ardango/struct_tag.lua`:
 |---|---|---|
 | `RunCurrTest` | inside `TestGreetPass` | notify: `go test: TestGreetPass: ok ...` |
 | `RunCurrTest` | inside `TestGreetFail` | popup with the raw failure text (default; quickfix is opt-in via `opts.quickfix`, not currently wired to a keymap) |
+| `RunCurrBenchmark` | inside `BenchmarkGreet` | popup with the `ns/op`/`B/op`/`allocs/op` line (never collapses to a plain success notify - the benchmark result line itself isn't a recognized "success" line, so `ui.show_results` always shows it) |
+| `RunCurrTest({ dry_run = true })` | inside any test | notify only: `go test: Name: dry run: go test ./. -run ^Name$` - nothing actually runs, no popup |
+| `CopyLastCmd` | after any Run\*/BuildCurrPackage call (dry run or real) | notify with the copied command; `:echo getreg("+")` confirms it landed in the register; with nothing run yet, notify: `ardango: no command run yet` |
 | `BuildCurrPackage` | `broken.go` present (see above) | popup with the `undefined: ...` error |
 | `BuildCurrPackage` | only `sample.go`/`sample_test.go` present | notify: `go build: success` |
 | `ui.show_results(data, { quickfix = true, ... })` (called directly, e.g. via `:lua`) | same failing output as above | quickfix list populated and opened (`opts.open_qf = false` populates without opening); doesn't clobber an existing quickfix list in place — pushes a new one onto the stack (`:colder` recovers the previous one) |
