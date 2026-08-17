@@ -226,13 +226,80 @@ local function select_tag_name(callback)
   end)
 end
 
--- Lets the user type a tag value - see `prompt`. callback receives
--- nil/"" for "no value given" (callers default to the snake-cased field
--- name in that case); it may also not be called at all if cancelled via
--- Telescope's <esc>, same as everywhere else `prompt` is used.
-local function prompt_tag_value(callback)
-  prompt('Tag value (empty = snake_case field name)', {},
-    { prompt = 'Enter tag value (empty = snake_case field name)' }, callback)
+-- Combines the tag value and its common options (config.options.tag_options,
+-- e.g. omitempty/-/required) into a single step, instead of two prompts in
+-- a row: <Tab>-toggle any options first (usually short enough to stay
+-- fully visible before you type anything), then type the value - typing
+-- filters the list but multi-selected entries stay selected regardless.
+-- <CR> confirms both at once. "-" wins over everything else if selected,
+-- since a bare `-` means "skip this field" per Go tag convention.
+--
+-- Falls back to a single vim.ui.input prompt (`value,option1,option2`) if
+-- telescope.nvim isn't installed. callback receives a function(field_name)
+-- -> resolved tag value string; it may not be called at all if cancelled
+-- via Telescope's <esc>, same as everywhere else `prompt` is used - the
+-- vim.ui.input fallback instead resolves to the plain snake_case default
+-- on cancel, per vim.ui.input's own contract.
+local function prompt_tag_value_and_options(callback)
+  local function resolve(value, options)
+    if vim.tbl_contains(options, '-') then
+      return function(_) return '-' end
+    end
+    return function(field_name)
+      local parts = { (value ~= '' and value) or snake(field_name) }
+      vim.list_extend(parts, options)
+      return table.concat(parts, ',')
+    end
+  end
+
+  local ok_pickers, pickers = pcall(require, 'telescope.pickers')
+  local ok_finders, finders = pcall(require, 'telescope.finders')
+  local ok_config, telescope_config = pcall(require, 'telescope.config')
+  local ok_actions, actions = pcall(require, 'telescope.actions')
+  local ok_action_state, action_state = pcall(require, 'telescope.actions.state')
+
+  if not (ok_pickers and ok_finders and ok_config and ok_actions and ok_action_state) then
+    vim.ui.input(
+      { prompt = 'Tag value[,options] (empty value = snake_case field name, e.g. email,omitempty)' },
+      function(input)
+        local pieces = {}
+        for piece in (input or ''):gmatch('[^,]+') do
+          table.insert(pieces, piece)
+        end
+        local options = {}
+        for i = 2, #pieces do
+          table.insert(options, pieces[i])
+        end
+        callback(resolve(pieces[1] or '', options))
+      end)
+    return
+  end
+
+  local tag_options = config.options.tag_options
+  pickers.new({}, {
+    prompt_title = 'Tag value + options (<Tab> to toggle ' .. table.concat(tag_options, '/') ..
+        ', then type the value)',
+    finder = finders.new_table({ results = tag_options }),
+    sorter = telescope_config.values.generic_sorter({}),
+    previewer = false,
+    attach_mappings = function(prompt_bufnr, map)
+      map({ "i", "n" }, "<Tab>", actions.toggle_selection + actions.move_selection_worse)
+      actions.select_default:replace(function()
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        local selections = picker:get_multi_selection()
+        local typed = action_state.get_current_line()
+        actions.close(prompt_bufnr)
+
+        local options = {}
+        for _, sel in ipairs(selections) do
+          table.insert(options, sel.value)
+        end
+
+        callback(resolve(typed or '', options))
+      end)
+      return true
+    end,
+  }):find()
 end
 
 -- AddTagToStruct receives a tag name and value and adds to
@@ -240,18 +307,8 @@ end
 -- It handles adding more values to an existing tag element.
 M.AddTagsToStruct = function()
   select_tag_name(function(tag_name)
-    local callback = function(field_name)
-      return snake(field_name)
-    end
-
-    prompt_tag_value(function(value)
-      if value and value ~= '' then
-        callback = function(_)
-          return value
-        end
-      end
-
-      structtag.add_to_struct_tag(tag_name, callback)
+    prompt_tag_value_and_options(function(value_callback)
+      structtag.add_to_struct_tag(tag_name, value_callback)
     end)
   end)
 end
@@ -261,18 +318,8 @@ end
 -- It handles adding more values to an existing tag element.
 M.AddTagToField = function()
   select_tag_name(function(tag_name)
-    local callback = function(field_name)
-      return snake(field_name)
-    end
-
-    prompt_tag_value(function(value)
-      if value and value ~= '' then
-        callback = function(_)
-          return value
-        end
-      end
-
-      structtag.add_to_field_tag(tag_name, callback)
+    prompt_tag_value_and_options(function(value_callback)
+      structtag.add_to_field_tag(tag_name, value_callback)
     end)
   end)
 end

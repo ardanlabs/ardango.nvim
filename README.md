@@ -10,7 +10,7 @@ This plugin exposes utility functions to enhance coding Go in Neovim.
 - __BuildCurrPackage__: Build the package in the current dir. Takes the same optional opts table as `RunCurrTest`.
 - __OrgBufImports__: Update imports of the current buffer.
 - __SignatureInStatusLine__: Shows the element under the cursor signature info on hover in the status line.
-- __AddTagToField__: Adds go tag element to the struct field under the cursor, can handle exisiting elements. Prompts for the tag name via a fuzzy-searchable Telescope picker of common names (json, yaml, db, validate, xml) — typing something that doesn't match any of them uses what you typed instead — then the tag value through the same kind of prompt (empty defaults to the snake cased field name). Both fall back to plain `vim.ui.input` prompts if telescope.nvim isn't installed.
+- __AddTagToField__: Adds go tag element to the struct field under the cursor, can handle exisiting elements. Prompts for the tag name via a fuzzy-searchable Telescope picker of common names (json, yaml, db, validate, xml) — typing something that doesn't match any of them uses what you typed instead. Then a single combined prompt handles both the tag value and its common options: `<Tab>`-toggle any of `omitempty`/`-`/`required` (they stay selected as you type, even though typing filters the visible list), then type the value (empty defaults to the snake cased field name) and confirm with `<CR>`. Picking `-` wins over everything else, since a bare `-` means "skip this field" per Go tag convention. Falls back to plain `vim.ui.input` prompts (`value,option1,option2`) if telescope.nvim isn't installed.
 - __AddTagsToStruct__: Adds go tag element to all fields inside the struct under the cursor, can handle exisiting elements. Same prompts as `AddTagToField`. If no value is passed the snake cased field name will be the element value.
 - __RemoveTagFromField__: Removes a tag element from the field under the cursor. Same prompts as `AddTagToField`.
 - __RemoveTagsFromStruct__: Removes a tag element from all the fields inside the struct under the cursor. Same prompts as `AddTagToField`.
@@ -46,12 +46,15 @@ require("ardango").setup({
     relative = "editor",  -- default: "cursor"
     position = "50%",     -- default: 0
   },
+  -- Options offered (via <Tab>-toggle) in AddTagToField/AddTagsToStruct's
+  -- value+options prompt. Replaces the default list entirely.
+  tag_options = { "omitempty", "-", "required", "unique", "index" },
 })
 ```
 
 `setup()` is optional — everything works with its defaults if you skip it.
-Fields are passed straight through to `nui.Popup` (`:h nui.popup`), so any
-shape it accepts for `size`/`position` works here too.
+Popup fields are passed straight through to `nui.Popup` (`:h nui.popup`),
+so any shape it accepts for `size`/`position` works here too.
 
 ### Setting as an autocommand:
 
