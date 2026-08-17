@@ -25,13 +25,28 @@ end
 
 local api = vim.api
 
+-- Tracks whichever go test/build job is currently in flight (RunCurrTest,
+-- RunFileTests, RunPackageTests and BuildCurrPackage all share this - they
+-- also share the same result popup/quickfix/telescope view, so only one
+-- job's output is ever meaningful to show at a time).
+local current_job = nil
+
 -- Runs cmd, notifying when it starts and handing its combined
--- stdout/stderr to ui.show_results (merged with opts) on exit.
+-- stdout/stderr to ui.show_results (merged with opts) on exit. Stops any
+-- still-running previous job first, so spamming a Run.../Build... keymap
+-- doesn't leave overlapping `go` processes racing to populate the same
+-- result view - whichever happened to finish last would otherwise
+-- silently win, even if it was the stale one.
 local function run_job(cmd, label, current_dir, opts)
+  if current_job then
+    vim.fn.jobstop(current_job)
+  end
+
   vim.notify(label .. ": running...", vim.log.levels.INFO)
 
   local output = {}
-  vim.fn.jobstart(cmd, {
+  local job_id
+  job_id = vim.fn.jobstart(cmd, {
     stdout_buffered = true,
     stderr_buffered = true,
     on_stdout = function(_, data)
@@ -41,12 +56,20 @@ local function run_job(cmd, label, current_dir, opts)
       vim.list_extend(output, data or {})
     end,
     on_exit = function()
+      -- A newer run superseded this one (it was jobstop'd above) - its
+      -- output is stale, don't show it.
+      if current_job ~= job_id then
+        return
+      end
+      current_job = nil
+
       local show_opts = vim.tbl_extend("force",
         { label = label, base_dir = current_dir },
         opts or {})
       ui.show_results(output, show_opts)
     end,
   })
+  current_job = job_id
 end
 
 -- Collects the names of every Test* function declared in bufnr.

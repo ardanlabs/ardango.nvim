@@ -12,19 +12,27 @@ Living list of TUI/usability improvement ideas for ardango.nvim. Check items off
 - [x] Reuse one result buffer/window instead of a new scratch buffer per run — persists across calls; a still-open popup from a previous run is closed (not stacked) before the next one mounts
 - [x] More popup keymaps — `q` to close (alongside `<esc>`), `<CR>` to jump to the file:line under the cursor (same idea as quickfix's `<CR>`)
 - [x] Configurable popup (border, size, position) via `setup()` — `require("ardango").setup({ popup = { border, size, relative, position } })`, passed straight through to `nui.Popup`
+- [x] Job guard / cancel-in-flight — a module-level `current_job` in `run_job` (shared by `RunCurrTest`/`RunFileTests`/`RunPackageTests`/`BuildCurrPackage`, since they all share the same result view) `jobstop`s any still-running job before starting a new one, and the killed job's `on_exit` checks it's still the current job before calling `ui.show_results` - so a superseded job's stale output never overwrites the new one's.
+- [ ] `RunLastTest` — re-run whatever test invocation (cursor/file/package, with its opts) was run last, without repositioning the cursor
+- [ ] Benchmark support — `RunCurrBenchmark` via `go test -bench=^Name$ -run=^$`, reusing the existing popup/quickfix/telescope display
 
 ## Struct tag editing (`lua/ardango/struct_tag.lua`)
 - [x] Picker for common tag names (json, yaml, db, validate, xml) — fuzzy-searchable Telescope picker; typing something with no match uses what you typed. The tag-value prompt afterward uses the same Telescope-prompt mechanism (not a plain `vim.ui.input` cmdline drop) so the flow feels consistent end to end; both fall back to plain `vim.ui.input` if telescope.nvim isn't installed. Used by all four Add/Remove tag commands. Fixed a latent bug as part of this: cancelling the old free-text prompt on the Remove commands passed `nil` straight through and silently removed the *entire* tag; the picker now just no-ops on cancel.
 - [x] Toggle common tag options (omitempty, "-", required) as a checklist — merged into the same prompt as the tag value (see below), not a separate step. The option list is configurable/expandable via `setup({ tag_options = {...} })` (`lua/ardango/config.lua`), replacing the default list entirely rather than merging with it.
 - [x] Visual-mode support for tag add/remove across multiple fields — `AddTagToVisualFields`/`RemoveTagFromVisualFields` scope the same prompts to whatever field lines were last visually selected (via the `'</'>` marks), instead of every field in the struct or just the one under the cursor. Needs a Visual-mode keymap that exits Visual mode (`<Esc>`) before invoking the Lua function, so the marks are set in time — mapping straight to the function runs it while still in Visual mode.
 - [x] ~~Live preview of resulting tag string before committing~~ — ruled out: the value/options prompt is already cheap to undo and retry, so a live preview isn't worth the added complexity (implemented once, then rolled back).
+- [ ] Multi-namespace tags in one pass — add e.g. `json`+`db`+`validate` to a field in one flow instead of three separate command invocations
+- [ ] gofmt the touched lines after a tag edit — tag edits don't currently re-align struct field columns the way `gofmt`/`goimports` would
 
 ## Config & discoverability
 - [x] `setup(opts)` entrypoint for plugin-wide config — `lua/ardango/config.lua`; currently only covers the popup, easy to extend as more config shows up
 - [x] `:checkhealth ardango` (`lua/ardango/health.lua`) — checks the `go` binary and the Go treesitter parser (both errors, plugin can't function without them), `nui.nvim` (error, the default results popup needs it), and `telescope.nvim` (warning only, it's an optional dependency).
 - [x] Vim help docs (`doc/ardango.txt`) — `:help ardango`, covering setup, every command, and configuration; `doc/tags` is generated (`:helptags doc`, or automatically by most plugin managers on install), so it's gitignored rather than committed.
 - [x] Replace remaining `print()` calls with `vim.notify` — `struct_tag.lua`'s "not inside a struct/field declaration" messages now go through `vim.notify(..., WARN)` with the `ardango: ` prefix used elsewhere; `SignatureInStatusLine`'s `print(definition)` now uses `vim.notify(..., INFO)`.
+- [ ] `:Ardango` Ex-command with tab completion — everything's Lua-function-only right now; a completable Ex command layer would help non-keymap users discover commands
 
 ## Editor integration
 - [x] `SignatureInStatusLine` → optional floating hover window — `{ float = true }` opens the full hover content via `vim.lsp.util.open_floating_preview` (the same helper `vim.lsp.buf.hover()` uses) instead of the default one-line `vim.notify` summary. `dev/setup.sh` now also installs the `markdown`/`markdown_inline` parsers, since Neovim's own highlighter needs them for the floating content and otherwise throws a harmless-but-noisy error on any hover with a fenced code block.
 - [x] Command to run all tests in file/package, not just cursor under — `RunFileTests`/`RunPackageTests`
+- [ ] Go-to-test / go-to-impl toggle — jump between `foo.go` and `foo_test.go` (create the test file with a package stub if it doesn't exist yet)
+- [ ] Table-driven test skeleton generator — treesitter-read the function under cursor's signature and scaffold a `[]struct{...}` table test, matching the existing tag-editing codegen style
