@@ -38,9 +38,9 @@ local api = vim.api
 -- job's output is ever meaningful to show at a time).
 local current_job = nil
 
--- The most recently computed shell command (real run or opts.dry_run),
--- from any Run*/BuildCurrPackage call. See CopyLastCmd.
-local last_cmd = nil
+-- The most recently computed job invocation (real run or opts.dry_run),
+-- from any Run*/BuildCurrPackage call. See CopyLastCmd/RunLastTest.
+local last_invocation = nil
 
 -- Runs cmd, notifying when it starts and handing its combined
 -- stdout/stderr to ui.show_results (merged with opts) on exit. Stops any
@@ -50,9 +50,10 @@ local last_cmd = nil
 -- silently win, even if it was the stale one.
 --
 -- opts.dry_run - don't actually run cmd, just show what would run (still
--- updates last_cmd, so a dry run can be followed by CopyLastCmd).
+-- updates last_invocation, so a dry run can be followed by CopyLastCmd or
+-- RunLastTest).
 local function run_job(cmd, label, current_dir, opts)
-  last_cmd = cmd
+  last_invocation = { cmd = cmd, label = label, current_dir = current_dir, opts = opts }
 
   if opts and opts.dry_run then
     vim.notify(label .. ": dry run: " .. cmd, vim.log.levels.INFO)
@@ -193,12 +194,30 @@ end
 -- real run, either updates it) onto the system clipboard (the "+"
 -- register), so it can be pasted into a terminal and run manually.
 M.CopyLastCmd = function()
-  if not last_cmd then
+  if not last_invocation then
     vim.notify("ardango: no command run yet", vim.log.levels.WARN)
     return
   end
-  vim.fn.setreg('+', last_cmd)
-  vim.notify("ardango: copied to clipboard: " .. last_cmd, vim.log.levels.INFO)
+  vim.fn.setreg('+', last_invocation.cmd)
+  vim.notify("ardango: copied to clipboard: " .. last_invocation.cmd, vim.log.levels.INFO)
+end
+
+-- RunLastTest re-runs whatever Run*/BuildCurrPackage invocation was most
+-- recently computed (test, benchmark or build alike - whatever it was),
+-- without needing to reposition the cursor back on the original
+-- test/benchmark. {opts} is merged over (and overrides) the opts used
+-- last time - e.g. RunLastTest({ quickfix = true }) reruns the same
+-- command but through the quickfix list this time. Always actually runs,
+-- even if the last invocation was itself an opts.dry_run preview - pass
+-- { dry_run = true } again if you want to re-preview instead.
+M.RunLastTest = function(opts)
+  if not last_invocation then
+    vim.notify("ardango: no command run yet", vim.log.levels.WARN)
+    return
+  end
+  local merged_opts = vim.tbl_extend("force",
+    last_invocation.opts or {}, { dry_run = false }, opts or {})
+  run_job(last_invocation.cmd, last_invocation.label, last_invocation.current_dir, merged_opts)
 end
 
 -- OrgImports is a function to update imports of the current buffer.

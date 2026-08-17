@@ -47,6 +47,7 @@ Example keymaps: >lua
     vim.keymap.set("n", "<leader>gp", ardango.BuildCurrPackage, opts)
     vim.keymap.set("n", "<leader>gd", function() ardango.RunCurrTest({ dry_run = true }) end, opts)
     vim.keymap.set("n", "<leader>gc", ardango.CopyLastCmd, opts)
+    vim.keymap.set("n", "<leader>gr", ardango.RunLastTest, opts)
 
     vim.keymap.set("n", "<leader>taf", ardango.AddTagToField, { buffer = 0 })
     vim.keymap.set("n", "<leader>tas", ardango.AddTagsToStruct, { buffer = 0 })
@@ -112,6 +113,16 @@ ardango.CopyLastCmd()                                        *ardango.CopyLastCm
     any Run*/BuildCurrPackage call above - a dry run or a real one,
     either counts) onto the system clipboard (the "+" register), so it
     can be pasted into a terminal and run manually.
+
+ardango.RunLastTest({opts})                                  *ardango.RunLastTest*
+    Re-runs whatever Run*/BuildCurrPackage invocation was most recently
+    computed (test, benchmark or build alike - whatever it was),
+    without needing to reposition the cursor. {opts} is merged over
+    (and overrides) the opts used last time - e.g. RunLastTest({
+    quickfix = true }) reruns the same command but through the
+    quickfix list this time. Always actually runs, even if the last
+    invocation was itself an opts.dry_run preview - pass { dry_run =
+    true } again to re-preview instead.
 
 ardango.OrgBufImports({wait_ms})                        *ardango.OrgBufImports*
     Organizes/updates the imports of the current buffer via the attached
