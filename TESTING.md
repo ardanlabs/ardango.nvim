@@ -111,6 +111,10 @@ or `lua/ardango/struct_tag.lua`:
 | `RunCurrTest({ dry_run = true })` | inside any test | notify only: `go test: Name: dry run: go test ./. -run ^Name$` - nothing actually runs, no popup |
 | `CopyLastCmd` | after any Run\*/BuildCurrPackage call (dry run or real) | notify with the copied command; `:echo getreg("+")` confirms it landed in the register; with nothing run yet, notify: `ardango: no command run yet` |
 | `RunLastTest` | after `RunCurrTest({ dry_run = true })` on a test, cursor then moved elsewhere | actually runs (not another dry-run preview) the same command from wherever the cursor ended up; with nothing run yet, notify: `ardango: no command run yet` |
+| `:Ardango ` + `<Tab>` | any buffer | completes to the list of command names; after a command name + space, `<Tab>` instead completes to the flag list (`quickfix`/`telescope`/`verbose`/`dry_run`/`float`) |
+| `:Ardango RunCurrTest dry_run` | inside a test | same as `RunCurrTest({ dry_run = true })` |
+| `:Ardango SignatureInStatusLine 500 float` | cursor on an identifier (needs the `vim.lsp.buf_request_sync` stub from above without a real LSP client) | same as `SignatureInStatusLine(500, { float = true })` |
+| `:Ardango NotACommand` | any buffer | notify: `ardango: unknown command 'NotACommand'` |
 | `BuildCurrPackage` | `broken.go` present (see above) | popup with the `undefined: ...` error |
 | `BuildCurrPackage` | only `sample.go`/`sample_test.go` present | notify: `go build: success` |
 | `ui.show_results(data, { quickfix = true, ... })` (called directly, e.g. via `:lua`) | same failing output as above | quickfix list populated and opened (`opts.open_qf = false` populates without opening); doesn't clobber an existing quickfix list in place — pushes a new one onto the stack (`:colder` recovers the previous one) |

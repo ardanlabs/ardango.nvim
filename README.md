@@ -20,6 +20,24 @@ This plugin exposes utility functions to enhance coding Go in Neovim.
 - __AddTagToVisualFields__: Adds a tag element to every field declared inside the last visual selection (within the struct under the cursor) — same prompts as `AddTagToField`, but scoped to the selected lines instead of every field or just one. Meant to be called from a Visual-mode keymap (see below) so the `'</'>` marks are set before it runs.
 - __RemoveTagFromVisualFields__: Removes a tag element from every field declared inside the last visual selection. Same prompt as `RemoveTagFromField`.
 
+## Ex command
+
+Every function above is also reachable from the cmdline via `:Ardango
+<Command> [flag...]`, with tab completion for both the command name and
+any boolean flags (`quickfix`, `telescope`, `verbose`, `dry_run`, `float`)
+it accepts — handy if you don't want to set up keymaps for everything.
+`OrgBufImports`/`SignatureInStatusLine` take a milliseconds number
+instead of/alongside flags (defaults to 1000 if omitted). Examples:
+
+```vim
+:Ardango RunCurrTest
+:Ardango RunCurrTest quickfix verbose
+:Ardango RunCurrTest dry_run
+:Ardango RunLastTest
+:Ardango AddTagToField
+:Ardango SignatureInStatusLine 500 float
+```
+
 ## Dependencies
 
 - [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter)

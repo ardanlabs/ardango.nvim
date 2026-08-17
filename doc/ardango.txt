@@ -6,8 +6,9 @@ CONTENTS                                                     *ardango-contents*
     1. Introduction ........................... |ardango-introduction|
     2. Setup ................................... |ardango-setup|
     3. Commands ................................. |ardango-commands|
-    4. Configuration ............................. |ardango-configuration|
-    5. Health .................................... |ardango-health|
+    4. Ex command ................................ |ardango-ex-command|
+    5. Configuration .............................. |ardango-configuration|
+    6. Health ..................................... |ardango-health|
 
 ==============================================================================
 1. Introduction                                          *ardango-introduction*
@@ -73,8 +74,9 @@ Example keymaps: >lua
 3. Commands                                                    *ardango-commands*
 
 All of these are Lua functions on the module returned by
-require("ardango") - there are no :Ardango... Ex commands, wire them up
-to keymaps/autocmds as shown in |ardango-setup|.
+require("ardango") - wire them up to keymaps/autocmds as shown in
+|ardango-setup|, or reach them from the cmdline via :Ardango, see
+|ardango-ex-command|.
 
 ardango.RunCurrTest({opts})                                *ardango.RunCurrTest*
     Runs the test under the cursor and shows the results in a popup window
@@ -183,7 +185,26 @@ ardango.RemoveTagFromVisualFields()          *ardango.RemoveTagFromVisualFields*
     selection.
 
 ==============================================================================
-4. Configuration                                          *ardango-configuration*
+4. Ex command                                                *ardango-ex-command*
+
+Every command in |ardango-commands| is also reachable from the cmdline
+via: >vim
+    :Ardango {Command} [flag...]
+<
+with tab completion for both {Command} and any boolean flags it accepts
+(quickfix, telescope, verbose, dry_run, float) - handy if you don't want
+to set up keymaps for everything. OrgBufImports/SignatureInStatusLine
+take a milliseconds number instead of/alongside flags (defaults to 1000
+if omitted). Examples: >vim
+    :Ardango RunCurrTest
+    :Ardango RunCurrTest quickfix verbose
+    :Ardango RunCurrTest dry_run
+    :Ardango RunLastTest
+    :Ardango AddTagToField
+    :Ardango SignatureInStatusLine 500 float
+<
+==============================================================================
+5. Configuration                                          *ardango-configuration*
 
 ardango.setup({opts})                                          *ardango.setup*
     Overrides plugin-wide config. Optional - everything works with its
@@ -209,7 +230,7 @@ ardango.setup({opts})                                          *ardango.setup*
     with it.
 
 ==============================================================================
-5. Health                                                        *ardango-health*
+6. Health                                                        *ardango-health*
 
 Run :checkhealth ardango to verify the go binary and the Go treesitter
 parser are available (both required), nui.nvim is installed (required

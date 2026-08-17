@@ -483,5 +483,79 @@ M.RemoveTagFromVisualFields = function()
   end)
 end
 
+-- Every M command reachable from :Ardango, in the order they're offered
+-- for completion.
+local EX_COMMANDS = {
+  "RunCurrTest", "RunFileTests", "RunPackageTests", "RunCurrBenchmark",
+  "BuildCurrPackage", "RunLastTest", "CopyLastCmd",
+  "AddTagToField", "AddTagsToStruct", "RemoveTagFromField", "RemoveTagsFromStruct",
+  "AddTagToVisualFields", "RemoveTagFromVisualFields",
+  "OrgBufImports", "SignatureInStatusLine",
+}
+
+-- Commands that take a wait_ms number (milliseconds) as their first
+-- argument, instead of an opts table.
+local WAIT_MS_COMMANDS = { OrgBufImports = true, SignatureInStatusLine = true }
+local DEFAULT_WAIT_MS = 1000
+
+-- Boolean opts recognized as bare words after the subcommand, e.g.
+-- `:Ardango RunCurrTest quickfix verbose`.
+local BOOL_OPTS = { "quickfix", "telescope", "verbose", "dry_run", "float" }
+
+-- :Ardango <Command> [flag...] - a tab-completable Ex-command layer over
+-- the Lua API above, for discoverability without a keymap. <Command> is
+-- any name in EX_COMMANDS; any following bare words matching BOOL_OPTS
+-- become `{ [flag] = true }` opts (for commands that take opts - it's a
+-- harmless no-op for the ones that don't). OrgBufImports/
+-- SignatureInStatusLine take a milliseconds number instead of/alongside
+-- flags (defaults to 1000 if omitted), e.g. `:Ardango OrgBufImports 2000`
+-- or `:Ardango SignatureInStatusLine 500 float`.
+vim.api.nvim_create_user_command("Ardango", function(cmd_opts)
+  local name = cmd_opts.fargs[1]
+  if not name or not M[name] then
+    vim.notify("ardango: unknown command '" .. tostring(name) .. "'", vim.log.levels.ERROR)
+    return
+  end
+
+  local rest = { unpack(cmd_opts.fargs, 2) }
+
+  if WAIT_MS_COMMANDS[name] then
+    local wait_ms = tonumber(rest[1]) or DEFAULT_WAIT_MS
+    if name == "SignatureInStatusLine" and vim.tbl_contains(rest, "float") then
+      M[name](wait_ms, { float = true })
+    else
+      M[name](wait_ms)
+    end
+    return
+  end
+
+  local flag_opts = {}
+  for _, arg in ipairs(rest) do
+    if vim.tbl_contains(BOOL_OPTS, arg) then
+      flag_opts[arg] = true
+    end
+  end
+
+  if next(flag_opts) then
+    M[name](flag_opts)
+  else
+    M[name]()
+  end
+end, {
+  nargs = "+",
+  desc = "Run an ardango.nvim command by name",
+  complete = function(arglead, cmdline)
+    -- Whatever's already on the line before the word being completed -
+    -- ["Ardango"] means we're completing the subcommand itself;
+    -- ["Ardango", subcommand, ...] means we're completing a flag.
+    local prefix = cmdline:sub(1, #cmdline - #arglead)
+    local prefix_words = {}
+    for w in prefix:gmatch("%S+") do
+      table.insert(prefix_words, w)
+    end
+    local candidates = (#prefix_words <= 1) and EX_COMMANDS or BOOL_OPTS
+    return vim.tbl_filter(function(c) return c:find(arglead, 1, true) == 1 end, candidates)
+  end,
+})
 
 return M
