@@ -37,12 +37,22 @@ local function check_telescope()
   end
 end
 
+local function check_gofmt()
+  if vim.fn.executable("gofmt") == 1 then
+    vim.health.ok("`gofmt` binary found on PATH (" .. vim.fn.exepath("gofmt") .. ")")
+  else
+    vim.health.warn("`gofmt` binary not found on PATH (optional)",
+      "Struct-tag commands re-align the edited struct's columns via gofmt; without it, edits still land but columns may end up misaligned")
+  end
+end
+
 M.check = function()
   vim.health.start("ardango.nvim")
   check_go_binary()
   check_treesitter_parser()
   check_nui()
   check_telescope()
+  check_gofmt()
 end
 
 return M

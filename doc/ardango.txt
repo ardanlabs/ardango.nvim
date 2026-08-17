@@ -24,6 +24,8 @@ Dependencies ~
     - telescope.nvim (optional - enables fuzzy pickers for tag prompts and
       for browsing test/build failures; falls back to plain vim.ui.input/
       the quickfix list if it isn't installed)
+    - gofmt (optional, ships with the Go toolchain - used to re-align
+      struct columns after a tag edit; skipped silently if not on PATH)
 
 ==============================================================================
 2. Setup                                                          *ardango-setup*
@@ -151,7 +153,10 @@ ardango.AddTagToField()                                  *ardango.AddTagToField*
     the value (empty defaults to the snake_cased field name) and confirm
     with <CR>. Picking - wins over everything else, since a bare -
     means "skip this field" per Go tag convention. Falls back to plain
-    vim.ui.input prompts if telescope.nvim isn't installed.
+    vim.ui.input prompts if telescope.nvim isn't installed. Every
+    struct-tag command re-runs the buffer through gofmt afterward (if
+    it's on PATH) so the struct's columns stay aligned - splicing raw
+    text in doesn't otherwise re-align them.
 
 ardango.AddTagsToStruct()                              *ardango.AddTagsToStruct*
     Same prompts as |ardango.AddTagToField|, but adds the tag element to
@@ -208,7 +213,7 @@ ardango.setup({opts})                                          *ardango.setup*
 
 Run :checkhealth ardango to verify the go binary and the Go treesitter
 parser are available (both required), nui.nvim is installed (required
-for the default results popup), and whether telescope.nvim is installed
-(optional).
+for the default results popup), and whether telescope.nvim and gofmt
+are installed (both optional).
 
 vim:tw=78:ts=8:noet:ft=help:norl:

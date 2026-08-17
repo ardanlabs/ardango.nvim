@@ -191,6 +191,36 @@ local function get_field_name(node --[[tsnode]], bufnr)
   end
 end
 
+-- Reformats bufnr via gofmt (stdin/stdout), replacing its content in
+-- place if formatting changed anything. Struct tag edits below splice in
+-- raw text via nvim_buf_set_text, which doesn't re-align struct field
+-- columns the way gofmt would - this repairs that afterward. No-ops
+-- (silently) if the gofmt binary isn't on PATH; warns (without touching
+-- the buffer) if gofmt itself fails, e.g. on invalid Go.
+local function gofmt_buffer(bufnr)
+  if vim.fn.executable('gofmt') ~= 1 then
+    return
+  end
+
+  local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local input = table.concat(lines, '\n') .. '\n'
+
+  local result = vim.system({ 'gofmt' }, { stdin = input, text = true }):wait()
+  if result.code ~= 0 then
+    vim.notify("ardango: gofmt failed, leaving edit as-is: " .. (result.stderr or ''), vim.log.levels.WARN)
+    return
+  end
+
+  local formatted = vim.split(result.stdout, '\n', { plain = true })
+  if formatted[#formatted] == '' then
+    table.remove(formatted)
+  end
+
+  if not vim.deep_equal(lines, formatted) then
+    api.nvim_buf_set_lines(bufnr, 0, -1, false, formatted)
+  end
+end
+
 local function remove_tag_from_field(bufnr, node, tag_name)
   local tag_nodes = node:field("tag")
   -- if there is a tag in the field.
@@ -261,6 +291,7 @@ local function add_elem_tag_to_field(elem_name, elem_value)
   end
 
   add_tag_to_field_declaration(bufnr, curr_field, elem_name, elem_value)
+  gofmt_buffer(bufnr)
 end
 
 -- Adds an element to all field tags in the struct.
@@ -288,6 +319,7 @@ local function add_elem_tag_to_struct(elem_name, elem_value)
   for _, field_line in fields_query:iter_captures(curr_struct, bufnr) do
     add_tag_to_field_declaration(bufnr, field_line, elem_name, callback)
   end
+  gofmt_buffer(bufnr)
 end
 
 -- Removes a tag elem from a struct tag.
@@ -338,6 +370,7 @@ local function add_elem_tag_to_fields_in_range(elem_name, elem_value, start_row,
       add_tag_to_field_declaration(bufnr, field_node, elem_name, callback)
     end
   end
+  gofmt_buffer(bufnr)
 end
 
 -- Removes elements (or the whole tag) from every field declaration whose
@@ -373,6 +406,7 @@ local function remove_tag_elem_from_fields_in_range(elem_name, start_row, end_ro
 
     ::continue::
   end
+  gofmt_buffer(bufnr)
 end
 
 -- Removes elements (or the whole tag) of the struct under the cursor.
@@ -388,6 +422,7 @@ local function remove_from_struct_tag(elem_name)
   end
 
   remove_tag_elem_from_struct(bufnr, curr_struct, elem_name)
+  gofmt_buffer(bufnr)
 end
 
 -- Remove elements (or the whole tag) fo the field under the cursor.
@@ -409,6 +444,7 @@ local function remove_from_field_tag(elem_name)
   end
 
   remove_tag_from_field(bufnr, curr_field, elem_name)
+  gofmt_buffer(bufnr)
 end
 
 local M = {
