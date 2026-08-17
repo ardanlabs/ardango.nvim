@@ -1,0 +1,176 @@
+*ardango.txt*  Go development helpers for Neovim
+
+==============================================================================
+CONTENTS                                                     *ardango-contents*
+
+    1. Introduction ........................... |ardango-introduction|
+    2. Setup ................................... |ardango-setup|
+    3. Commands ................................. |ardango-commands|
+    4. Configuration ............................. |ardango-configuration|
+    5. Health .................................... |ardango-health|
+
+==============================================================================
+1. Introduction                                          *ardango-introduction*
+                                                                     *ardango*
+
+ardango.nvim exposes utility functions to enhance coding Go in Neovim:
+running/building via the go toolchain, organizing imports, editing struct
+tags, and showing hover info in the statusline.
+
+Dependencies ~
+    - nvim-treesitter (with the Go parser installed)
+    - nvim-lspconfig
+    - nui.nvim
+    - telescope.nvim (optional - enables fuzzy pickers for tag prompts and
+      for browsing test/build failures; falls back to plain vim.ui.input/
+      the quickfix list if it isn't installed)
+
+==============================================================================
+2. Setup                                                          *ardango-setup*
+
+Requiring the plugin is enough to use its commands with their defaults:
+>lua
+    local ardango = require("ardango")
+<
+Call |ardango.setup()| to override the results popup or the tag-options
+list - see |ardango-configuration|. It's optional; everything works with
+its defaults if you skip it.
+
+Example keymaps: >lua
+    local ardango = require("ardango")
+    local opts = { noremap = true, silent = true }
+
+    vim.keymap.set("n", "<leader>gt", ardango.RunCurrTest, opts)
+    vim.keymap.set("n", "<leader>gf", ardango.RunFileTests, opts)
+    vim.keymap.set("n", "<leader>ga", ardango.RunPackageTests, opts)
+    vim.keymap.set("n", "<leader>gp", ardango.BuildCurrPackage, opts)
+
+    vim.keymap.set("n", "<leader>taf", ardango.AddTagToField, { buffer = 0 })
+    vim.keymap.set("n", "<leader>tas", ardango.AddTagsToStruct, { buffer = 0 })
+    vim.keymap.set("n", "<leader>trf", ardango.RemoveTagFromField, { buffer = 0 })
+    vim.keymap.set("n", "<leader>trs", ardango.RemoveTagsFromStruct, { buffer = 0 })
+
+    -- Visual-mode variants need <Esc> before the Lua call, so leaving
+    -- Visual mode sets the '</'> marks before the function runs.
+    vim.keymap.set("x", "<leader>tavf",
+      "<Esc>:lua require('ardango').AddTagToVisualFields()<CR>", { buffer = 0 })
+    vim.keymap.set("x", "<leader>trvf",
+      "<Esc>:lua require('ardango').RemoveTagFromVisualFields()<CR>", { buffer = 0 })
+
+    -- Update imports on save.
+    vim.api.nvim_create_autocmd("BufWritePre", {
+      pattern = "*.go",
+      callback = function() ardango.OrgBufImports(1000) end,
+    })
+<
+==============================================================================
+3. Commands                                                    *ardango-commands*
+
+All of these are Lua functions on the module returned by
+require("ardango") - there are no :Ardango... Ex commands, wire them up
+to keymaps/autocmds as shown in |ardango-setup|.
+
+ardango.RunCurrTest({opts})                                *ardango.RunCurrTest*
+    Runs the test under the cursor and shows the results in a popup window
+    by default. {opts} is an optional table:
+      - quickfix  (boolean) show results in the quickfix list instead
+      - telescope (boolean) show results via Telescope instead (implies
+                    quickfix; falls back to the quickfix list if
+                    telescope.nvim isn't installed)
+      - verbose   (boolean) also list passing tests, one green line each
+    See |ardango-configuration| for the popup's own settings.
+
+ardango.RunFileTests({opts})                              *ardango.RunFileTests*
+    Runs every test declared in the current buffer. Same {opts} as
+    |ardango.RunCurrTest|.
+
+ardango.RunPackageTests({opts})                        *ardango.RunPackageTests*
+    Runs every test in the current package (the whole directory, not just
+    the current file). Same {opts} as |ardango.RunCurrTest|.
+
+ardango.BuildCurrPackage({opts})                      *ardango.BuildCurrPackage*
+    Builds the package in the current directory. Same {opts} as
+    |ardango.RunCurrTest|.
+
+ardango.OrgBufImports({wait_ms})                        *ardango.OrgBufImports*
+    Organizes/updates the imports of the current buffer via the attached
+    LSP client's source.organizeImports code action, waiting up to
+    {wait_ms} milliseconds for a response.
+
+ardango.SignatureInStatusLine({wait_ms})          *ardango.SignatureInStatusLine*
+    Shows the signature/definition of the element under the cursor (via
+    LSP hover) in the statusline, waiting up to {wait_ms} milliseconds.
+
+ardango.AddTagToField()                                  *ardango.AddTagToField*
+    Adds a tag element to the struct field under the cursor (handles
+    fields that already have tags/other elements). Prompts for the tag
+    name via a fuzzy-searchable picker of common names (json, yaml, db,
+    validate, xml - typing something that doesn't match uses what you
+    typed), then a single combined prompt for the tag value and its
+    common options: <Tab>-toggle any of the |ardango-configuration|
+    tag_options (default omitempty/-/required; they stay selected
+    as you type, even though typing filters the visible list), then type
+    the value (empty defaults to the snake_cased field name) and confirm
+    with <CR>. Picking - wins over everything else, since a bare -
+    means "skip this field" per Go tag convention. Falls back to plain
+    vim.ui.input prompts if telescope.nvim isn't installed.
+
+ardango.AddTagsToStruct()                              *ardango.AddTagsToStruct*
+    Same prompts as |ardango.AddTagToField|, but adds the tag element to
+    every field inside the struct under the cursor.
+
+ardango.RemoveTagFromField()                          *ardango.RemoveTagFromField*
+    Removes a tag element from the field under the cursor. Same tag-name
+    prompt as |ardango.AddTagToField| (no value/options step).
+
+ardango.RemoveTagsFromStruct()                      *ardango.RemoveTagsFromStruct*
+    Removes a tag element from every field inside the struct under the
+    cursor. Same prompt as |ardango.RemoveTagFromField|.
+
+ardango.AddTagToVisualFields()                    *ardango.AddTagToVisualFields*
+    Same prompts as |ardango.AddTagToField|, scoped to every field
+    declared inside the last Visual-mode selection instead of every field
+    in the struct or just the one under the cursor. Meant to be called
+    from a Visual-mode keymap that exits Visual mode first (see the
+    example in |ardango-setup|) so the '</'> marks are set before it
+    runs.
+
+ardango.RemoveTagFromVisualFields()          *ardango.RemoveTagFromVisualFields*
+    Same as |ardango.RemoveTagFromField|, scoped to the last Visual-mode
+    selection.
+
+==============================================================================
+4. Configuration                                          *ardango-configuration*
+
+ardango.setup({opts})                                          *ardango.setup*
+    Overrides plugin-wide config. Optional - everything works with its
+    defaults if you never call this. >lua
+        require("ardango").setup({
+          popup = {
+            border = "single",    -- default: "rounded"
+            size = "80%",         -- default: "50%"
+            relative = "editor",  -- default: "cursor"
+            position = "50%",     -- default: 0
+          },
+          tag_options = { "omitempty", "-", "required", "unique", "index" },
+        })
+<
+    popup fields are passed straight through to nui.Popup (|nui.popup|),
+    so any shape it accepts for size/position works here too. This is
+    the results popup used by |ardango.RunCurrTest| and friends when
+    opts.quickfix/opts.telescope aren't set.
+
+    tag_options is the list offered (via <Tab>-toggle) in the tag
+    value/options prompt used by |ardango.AddTagToField| and friends.
+    Passing it *replaces* the default list entirely, rather than merging
+    with it.
+
+==============================================================================
+5. Health                                                        *ardango-health*
+
+Run :checkhealth ardango to verify the go binary and the Go treesitter
+parser are available (both required), nui.nvim is installed (required
+for the default results popup), and whether telescope.nvim is installed
+(optional).
+
+vim:tw=78:ts=8:noet:ft=help:norl:

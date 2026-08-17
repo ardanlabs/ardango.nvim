@@ -25,7 +25,8 @@ This plugin exposes utility functions to enhance coding Go in Neovim.
 - [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) — optional: used for the tag name/value prompts (`AddTagToField` & co.), and for browsing test/build failures when you pass `{ telescope = true }`. Falls back to plain `vim.ui.input`/the quickfix list if it isn't installed.
 
 Run `:checkhealth ardango` to verify the `go` binary, the Go treesitter
-parser, and these dependencies are all in place.
+parser, and these dependencies are all in place. `:help ardango` covers
+every command and config option in more detail than this README.
 
 ## Install
 

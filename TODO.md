@@ -22,7 +22,7 @@ Living list of TUI/usability improvement ideas for ardango.nvim. Check items off
 ## Config & discoverability
 - [x] `setup(opts)` entrypoint for plugin-wide config — `lua/ardango/config.lua`; currently only covers the popup, easy to extend as more config shows up
 - [x] `:checkhealth ardango` (`lua/ardango/health.lua`) — checks the `go` binary and the Go treesitter parser (both errors, plugin can't function without them), `nui.nvim` (error, the default results popup needs it), and `telescope.nvim` (warning only, it's an optional dependency).
-- [ ] Vim help docs (`doc/ardango.txt`)
+- [x] Vim help docs (`doc/ardango.txt`) — `:help ardango`, covering setup, every command, and configuration; `doc/tags` is generated (`:helptags doc`, or automatically by most plugin managers on install), so it's gitignored rather than committed.
 - [ ] Replace remaining `print()` calls with `vim.notify`
 
 ## Editor integration
