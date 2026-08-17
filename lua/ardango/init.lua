@@ -340,5 +340,38 @@ M.RemoveTagFromField = function()
   end)
 end
 
+-- Reads the '</'> marks Neovim leaves after exiting visual mode into a
+-- 0-indexed, inclusive row range. Meant to be called from a visual-mode
+-- keymap - invoking the mapped function itself exits visual mode and sets
+-- the marks before the function runs, so this doesn't need to be called
+-- from inside a :'<,'> command.
+local function visual_range()
+  local start_row = vim.fn.getpos("'<")[2] - 1
+  local end_row = vim.fn.getpos("'>")[2] - 1
+  return start_row, end_row
+end
+
+-- AddTagToVisualFields adds a tag element to every field declared inside
+-- the last visual selection (within the struct under the cursor). Same
+-- name/value/options prompts as AddTagToField.
+M.AddTagToVisualFields = function()
+  local start_row, end_row = visual_range()
+  select_tag_name(function(tag_name)
+    prompt_tag_value_and_options(function(value_callback)
+      structtag.add_to_fields_in_range_tag(tag_name, value_callback, start_row, end_row)
+    end)
+  end)
+end
+
+-- RemoveTagFromVisualFields removes a tag element from every field
+-- declared inside the last visual selection. Same name prompt as
+-- RemoveTagFromField.
+M.RemoveTagFromVisualFields = function()
+  local start_row, end_row = visual_range()
+  select_tag_name(function(tag_name)
+    structtag.remove_from_fields_in_range_tag(tag_name, start_row, end_row)
+  end)
+end
+
 
 return M

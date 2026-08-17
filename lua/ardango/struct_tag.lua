@@ -313,6 +313,68 @@ local function remove_tag_elem_from_struct(bufnr, node, elem_name)
   end
 end
 
+-- Adds an element to the tags of every field declaration whose start row
+-- falls within [start_row, end_row] (0-indexed, inclusive) of the struct
+-- under the cursor - i.e. a visual-mode selection of field lines.
+-- elem_value - same as add_elem_tag_to_struct's.
+local function add_elem_tag_to_fields_in_range(elem_name, elem_value, start_row, end_row)
+  local bufnr = api.nvim_get_current_buf()
+  local curr_struct = get_current_struct(bufnr)
+
+  -- not inside a struct...
+  if curr_struct == nil then
+    print("sorry, not inside a struct declaration...")
+    return
+  end
+
+  local callback = elem_value
+  if type(elem_value) == "string" then
+    callback = function() return elem_value end
+  end
+
+  for _, field_node in fields_query:iter_captures(curr_struct, bufnr) do
+    local row = field_node:range()
+    if row >= start_row and row <= end_row then
+      add_tag_to_field_declaration(bufnr, field_node, elem_name, callback)
+    end
+  end
+end
+
+-- Removes elements (or the whole tag) from every field declaration whose
+-- tag falls within [start_row, end_row] (0-indexed, inclusive) of the
+-- struct under the cursor - i.e. a visual-mode selection of field lines.
+-- elem_name - optional - If name is not passed all elements are removed.
+local function remove_tag_elem_from_fields_in_range(elem_name, start_row, end_row)
+  local bufnr = api.nvim_get_current_buf()
+  local curr_struct = get_current_struct(bufnr)
+
+  -- not inside a struct...
+  if curr_struct == nil then
+    print("sorry, not inside a struct declaration...")
+    return
+  end
+
+  for _, tag_node in field_tag_query:iter_captures(curr_struct, bufnr) do
+    local tag_row, start_col, end_row_n, end_col = tag_node:range()
+    if tag_row < start_row or tag_row > end_row then
+      goto continue
+    end
+
+    if not elem_name then
+      api.nvim_buf_set_text(bufnr, tag_row, start_col, end_row_n, end_col, {})
+      goto continue
+    end
+
+    local raw_tag = treesitter.get_node_text(tag_node, bufnr)
+    local parsedTag = st.StructTag:new(raw_tag)
+
+    local new_raw = parsedTag:remove(elem_name):raw()
+    api.nvim_buf_set_text(bufnr, tag_row, start_col, end_row_n, end_col, { new_raw })
+
+    ::continue::
+  end
+end
+
 -- Removes elements (or the whole tag) of the struct under the cursor.
 -- elem_name - optional - If name is not passed all elements are removed.
 local function remove_from_struct_tag(elem_name)
@@ -354,6 +416,8 @@ local M = {
   remove_from_struct_tag = remove_from_struct_tag,
   add_to_field_tag = add_elem_tag_to_field,
   add_to_struct_tag = add_elem_tag_to_struct,
+  add_to_fields_in_range_tag = add_elem_tag_to_fields_in_range,
+  remove_from_fields_in_range_tag = remove_tag_elem_from_fields_in_range,
 }
 
 return M

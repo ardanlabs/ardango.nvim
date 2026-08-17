@@ -14,6 +14,8 @@ This plugin exposes utility functions to enhance coding Go in Neovim.
 - __AddTagsToStruct__: Adds go tag element to all fields inside the struct under the cursor, can handle exisiting elements. Same prompts as `AddTagToField`. If no value is passed the snake cased field name will be the element value.
 - __RemoveTagFromField__: Removes a tag element from the field under the cursor. Same prompts as `AddTagToField`.
 - __RemoveTagsFromStruct__: Removes a tag element from all the fields inside the struct under the cursor. Same prompts as `AddTagToField`.
+- __AddTagToVisualFields__: Adds a tag element to every field declared inside the last visual selection (within the struct under the cursor) — same prompts as `AddTagToField`, but scoped to the selected lines instead of every field or just one. Meant to be called from a Visual-mode keymap (see below) so the `'</'>` marks are set before it runs.
+- __RemoveTagFromVisualFields__: Removes a tag element from every field declared inside the last visual selection. Same prompt as `RemoveTagFromField`.
 
 ## Dependencies
 
@@ -96,4 +98,10 @@ vim.keymap.set('n', '<leader>tas', ardango.AddTagsToStruct, { buffer = 0 })
 vim.keymap.set('n', '<leader>trf', ardango.RemoveTagFromField, { buffer = 0 })
 -- Removes tag element from the all fields of the struct under the cursor.
 vim.keymap.set('n', '<leader>trs', ardango.RemoveTagsFromStruct, { buffer = 0 })
+-- Adds/removes a tag element to/from every field in a visual selection.
+-- <Esc> first so leaving Visual mode sets the '</'> marks before the
+-- function runs - mapping straight to the Lua function would call it
+-- while still in Visual mode, before the marks are up to date.
+vim.keymap.set('x', '<leader>tavf', "<Esc>:lua require('ardango').AddTagToVisualFields()<CR>", { buffer = 0 })
+vim.keymap.set('x', '<leader>trvf', "<Esc>:lua require('ardango').RemoveTagFromVisualFields()<CR>", { buffer = 0 })
 ```

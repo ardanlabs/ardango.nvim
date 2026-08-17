@@ -38,3 +38,8 @@ vim.keymap.set("n", "<leader>taf", ardango.AddTagToField, opts)
 vim.keymap.set("n", "<leader>tas", ardango.AddTagsToStruct, opts)
 vim.keymap.set("n", "<leader>trf", ardango.RemoveTagFromField, opts)
 vim.keymap.set("n", "<leader>trs", ardango.RemoveTagsFromStruct, opts)
+-- <Esc> first so leaving Visual mode sets the '</'> marks before the
+-- function runs - mapping straight to the Lua function would call it
+-- while still in Visual mode, before the marks are up to date.
+vim.keymap.set("x", "<leader>tavf", "<Esc>:lua require('ardango').AddTagToVisualFields()<CR>", opts)
+vim.keymap.set("x", "<leader>trvf", "<Esc>:lua require('ardango').RemoveTagFromVisualFields()<CR>", opts)
