@@ -100,10 +100,11 @@ type server struct {
 	writeMu sync.Mutex // serializes stdout writes
 	enc     *json.Encoder
 
-	mu     sync.Mutex // guards client, bps, busy
-	client *rpc2.RPCClient
-	bps    map[string]int // "file:line" -> delve breakpoint id
-	busy   bool           // a continue/next/step/stepout is in flight
+	mu       sync.Mutex // guards client, bps, busy, stopping
+	client   *rpc2.RPCClient
+	bps      map[string]int // "file:line" -> delve breakpoint id
+	busy     bool           // a continue/next/step/stepout is in flight
+	stopping bool           // a "stop" is being handled; suppress further output
 }
 
 func key(file string, line int) string {
@@ -132,11 +133,24 @@ func (s *server) handle(req request) {
 		s.run(req)
 	case "stop":
 		s.mu.Lock()
+		s.stopping = true
 		c := s.client
 		s.mu.Unlock()
 		if c != nil {
 			_, _ = c.Halt()
 			_ = c.Detach(true)
+		}
+		// Halt unblocks any in-flight run goroutine; let it unwind (its
+		// deferred `busy = false` runs after its final send) before we
+		// exit, so os.Exit can't kill it mid-Encode.
+		for i := 0; i < 200; i++ {
+			s.mu.Lock()
+			busy := s.busy
+			s.mu.Unlock()
+			if !busy {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
 		s.send(response{ID: req.ID, OK: true})
 		os.Exit(0)
@@ -244,6 +258,15 @@ func (s *server) run(req request) {
 			st, err = client.Step()
 		case "stepout":
 			st, err = client.StepOut()
+		}
+
+		// If a "stop" landed while this was running, its result is moot
+		// and Neovim's session is already gone - don't emit a stray line.
+		s.mu.Lock()
+		stopping := s.stopping
+		s.mu.Unlock()
+		if stopping {
+			return
 		}
 
 		if code, ok := exitStatus(err); ok {

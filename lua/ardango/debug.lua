@@ -75,8 +75,16 @@ local function finish(s)
     return
   end
   s.stopping = true
-  pcall(vim.fn.jobstop, s.helper_job)
-  pcall(vim.fn.jobstop, s.dlv_job)
+  -- Drop any un-resolved response callbacks so a late line from the
+  -- helper can't run one against a dead session (dispatch also guards
+  -- the scheduled call with session == s).
+  s.pending = {}
+  if s.helper_job then
+    pcall(vim.fn.jobstop, s.helper_job)
+  end
+  if s.dlv_job then
+    pcall(vim.fn.jobstop, s.dlv_job)
+  end
   if session == s then
     session = nil
     clear_position_sign()
@@ -115,8 +123,15 @@ local function dispatch(s, line)
     local cb = s.pending[msg.id]
     s.pending[msg.id] = nil
     -- Response handlers touch buffers/windows/signs, so hop off the
-    -- (possibly fast-event) job callback context first.
-    vim.schedule(function() cb(msg) end)
+    -- (possibly fast-event) job callback context first - and bail if the
+    -- session was torn down (or replaced) between now and then, so a
+    -- late response can't move the cursor / re-place signs / mark
+    -- breakpoints applied against a session that's gone.
+    vim.schedule(function()
+      if session == s then
+        cb(msg)
+      end
+    end)
   end
 end
 
@@ -166,6 +181,25 @@ local function sync_breakpoints(s)
   end
 end
 
+-- Sends the clearbreak ops queued by toggle_breakpoint while the target
+-- was running (dlv can only change breakpoints on a halted target). Same
+-- deferred-to-next-stop treatment the add path gets in sync_breakpoints.
+local function flush_pending_clears(s)
+  if not s or not s.ready or s.running then
+    return
+  end
+  local queued = s.pending_clears
+  s.pending_clears = {}
+  for _, c in ipairs(queued) do
+    send(s, { op = "clearbreak", file = c.file, line = c.line }, function(r)
+      if not r.ok then
+        vim.notify("ardango: clear breakpoint " .. short(c.file) .. ":" .. c.line ..
+          " failed: " .. (r.error or "?"), vim.log.levels.WARN)
+      end
+    end)
+  end
+end
+
 -- --------------------------------------------------------------------------
 -- stop location
 -- --------------------------------------------------------------------------
@@ -194,7 +228,9 @@ local function show_stop(s, st)
     clear_position_sign()
     vim.fn.sign_place(POS_SIGN_ID, SIGN_GROUP, POS_SIGN, bufnr, { lnum = st.line, priority = 20 })
   end
-  -- Any breakpoints added while the target was running land now.
+  -- Breakpoint edits made while the target was running land now (clears
+  -- before adds, in case the same line was toggled off then on).
+  flush_pending_clears(s)
   sync_breakpoints(s)
 
   local where = st["function"] and (" in " .. st["function"]) or ""
@@ -240,6 +276,7 @@ local function connect_helper(s)
       return
     end
     s.ready = true
+    flush_pending_clears(s)
     sync_breakpoints(s)
     vim.notify("ardango: debug session ready — :Ardango DebugContinue", vim.log.levels.INFO)
   end)
@@ -266,7 +303,7 @@ function M.start(spec)
     M.stop()
   end
 
-  local s = { next_id = 1, pending = {}, stdout_buf = "" }
+  local s = { next_id = 1, pending = {}, pending_clears = {}, stdout_buf = "" }
   session = s
 
   local wd = (spec.dir and spec.dir ~= "") and spec.dir or vim.fn.getcwd()
@@ -314,6 +351,7 @@ function M.start(spec)
   if s.dlv_job <= 0 then
     vim.notify("ardango: failed to launch dlv", vim.log.levels.ERROR)
     finish(s)
+    return
   end
 end
 
@@ -325,23 +363,36 @@ function M.stop()
   local s = session
   s.stopping = true
   session = nil
+  s.pending = {}
   clear_position_sign()
   for _, bp in pairs(breakpoints) do
     bp.applied = false
   end
-  -- Ask the helper to Halt + Detach(kill) dlv cleanly, then hard-stop
-  -- both a beat later. defer_fn doesn't block.
-  vim.fn.chansend(s.helper_job, vim.json.encode({ id = -1, op = "stop" }) .. "\n")
-  vim.defer_fn(function()
-    pcall(vim.fn.jobstop, s.helper_job)
+  if s.helper_job then
+    -- Ask the helper to Halt + Detach(kill) dlv cleanly, then hard-stop
+    -- both a beat later. defer_fn doesn't block.
+    pcall(vim.fn.chansend, s.helper_job, vim.json.encode({ id = -1, op = "stop" }) .. "\n")
+    vim.defer_fn(function()
+      pcall(vim.fn.jobstop, s.helper_job)
+      pcall(vim.fn.jobstop, s.dlv_job)
+    end, 200)
+  elseif s.dlv_job then
+    -- Stopped during startup, before the helper was spawned - nothing to
+    -- do gracefully, just kill dlv now.
     pcall(vim.fn.jobstop, s.dlv_job)
-  end, 200)
+  end
   vim.notify("ardango: debug session stopped", vim.log.levels.INFO)
 end
 
 -- --------------------------------------------------------------------------
 -- run control
 -- --------------------------------------------------------------------------
+
+-- next/step/stepout should return promptly; if one doesn't, assume the
+-- response was lost (rather than the program legitimately taking a while,
+-- as `continue` can) and unstick the session instead of wedging `running`
+-- true forever. `continue` gets no timeout.
+local STEP_TIMEOUT_MS = 30000
 
 local function run_cmd(op)
   local s = session
@@ -354,7 +405,14 @@ local function run_cmd(op)
     return
   end
   s.running = true
-  send(s, { op = op }, function(resp)
+
+  local settled = false
+  local id
+  id = send(s, { op = op }, function(resp)
+    if settled then
+      return
+    end
+    settled = true
     s.running = false
     if not resp.ok then
       vim.notify("ardango: " .. op .. " failed: " .. (resp.error or "?"), vim.log.levels.ERROR)
@@ -372,6 +430,19 @@ local function run_cmd(op)
       show_stop(s, resp.stopped)
     end
   end)
+
+  if op ~= "continue" then
+    vim.defer_fn(function()
+      if settled or session ~= s then
+        return
+      end
+      settled = true
+      s.pending[id] = nil
+      s.running = false
+      vim.notify("ardango: " .. op .. " timed out after " .. (STEP_TIMEOUT_MS / 1000) ..
+        "s — session may be wedged, :Ardango DebugStop to reset", vim.log.levels.ERROR)
+    end, STEP_TIMEOUT_MS)
+  end
 end
 
 function M.continue() run_cmd("continue") end
@@ -402,12 +473,19 @@ function M.toggle_breakpoint()
     if existing.sign_id then
       pcall(vim.fn.sign_unplace, SIGN_GROUP, { id = existing.sign_id })
     end
-    if session and session.ready and not session.running then
-      send(session, { op = "clearbreak", file = file, line = line }, function(r)
-        if not r.ok then
-          vim.notify("ardango: clear breakpoint failed: " .. (r.error or "?"), vim.log.levels.WARN)
-        end
-      end)
+    -- Only needs an RPC if dlv actually has it (existing.applied). Send
+    -- now if the target's halted, otherwise queue it for the next stop -
+    -- dropping it here would leave a live, invisible breakpoint.
+    if session and existing.applied then
+      if session.ready and not session.running then
+        send(session, { op = "clearbreak", file = file, line = line }, function(r)
+          if not r.ok then
+            vim.notify("ardango: clear breakpoint failed: " .. (r.error or "?"), vim.log.levels.WARN)
+          end
+        end)
+      else
+        table.insert(session.pending_clears, { file = file, line = line })
+      end
     end
     vim.notify(string.format("ardango: breakpoint removed %s:%d", short(file), line), vim.log.levels.INFO)
     return
