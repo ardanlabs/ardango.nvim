@@ -70,14 +70,16 @@ end
 
 -- Reused across runs instead of creating a new scratch buffer/popup every
 -- time, so repeated RunCurrTest/BuildCurrPackage calls don't pile up
--- buffers or stack overlapping popup windows.
+-- buffers or stack overlapping popup windows. Callers that want their own
+-- independent popup (so it doesn't clobber this one) pass their own state
+-- table to show_popup - see lua/ardango/debug.lua.
 local result_popup_state = { bufnr = nil, popup = nil }
 
-local function result_buf()
-  if not result_popup_state.bufnr or not api.nvim_buf_is_valid(result_popup_state.bufnr) then
-    result_popup_state.bufnr = api.nvim_create_buf(false, false)
+local function result_buf(state)
+  if not state.bufnr or not api.nvim_buf_is_valid(state.bufnr) then
+    state.bufnr = api.nvim_create_buf(false, false)
   end
-  return result_popup_state.bufnr
+  return state.bufnr
 end
 
 -- Opens filename:lnum:col in whatever window is current (i.e. the one
@@ -91,15 +93,19 @@ end
 -- previous run's buffer/window if there is one.
 -- base_dir - directory used to resolve relative file:line references
 --            under the cursor when pressing <CR>.
-M.show_popup = function(data, base_dir)
+-- state    - optional { bufnr, popup } table to reuse instead of the
+--            shared test/build results one, so an independent caller
+--            (debug locals/stack) doesn't unmount the results popup.
+M.show_popup = function(data, base_dir, state)
+  state = state or result_popup_state
   if data and not (data[1] == "") then
     -- Close a still-open popup from a previous run rather than stacking
     -- a new one on top of it. Popup:unmount() is a no-op if not mounted.
-    if result_popup_state.popup then
-      result_popup_state.popup:unmount()
+    if state.popup then
+      state.popup:unmount()
     end
 
-    local bufnr = result_buf()
+    local bufnr = result_buf(state)
     api.nvim_buf_clear_namespace(bufnr, RESULT_NS, 0, -1)
     api.nvim_buf_set_lines(bufnr, 0, -1, false, data)
     highlight_results(bufnr, data)
@@ -120,7 +126,7 @@ M.show_popup = function(data, base_dir)
         winhighlight = "Normal:Normal,FloatBorder:Normal",
       },
     }
-    result_popup_state.popup = popup
+    state.popup = popup
 
     popup:mount()
 

@@ -45,15 +45,19 @@ fi
 # (but harmless) error on any hover containing a fenced code block.
 "$nvim" --clean --headless -u "$here/init.lua" -c "TSInstallSync! markdown markdown_inline" -c "qa"
 
-# Build the Delve proxy helper used by the Debug* commands (lua/ardango/debug.lua
-# spawns bin/ardango-dbg). Needs the Go toolchain; skipped with a warning if
-# `go` isn't on PATH (the Debug* commands then just error until it's built).
+# Pre-build the Delve proxy helper used by the Debug* commands, into the
+# same cache location lua/ardango/debug.lua builds it lazily on first use -
+# so the dev session doesn't pay that on the first :Ardango DebugCurrTest.
+# Needs the Go toolchain; skipped with a warning otherwise (the lazy build
+# then handles it, or errors if `go` is still missing at that point).
 root="$(cd "$here/.." && pwd)"
 if command -v go >/dev/null 2>&1; then
-  ( cd "$root" && go build -o bin/ardango-dbg ./cmd/ardango-dbg )
-  echo "built bin/ardango-dbg"
+  cache="$("$nvim" --clean --headless -c 'lua io.write(vim.fn.stdpath("cache"))' -c 'qa' 2>/dev/null)"
+  mkdir -p "$cache/ardango"
+  ( cd "$root" && go build -o "$cache/ardango/ardango-dbg" ./cmd/ardango-dbg )
+  echo "built $cache/ardango/ardango-dbg"
 else
-  echo "warning: 'go' not found - skipping bin/ardango-dbg build (needed for the Debug* commands)" >&2
+  echo "warning: 'go' not found - skipping the debug helper pre-build" >&2
 fi
 
 echo "dev environment ready. Try:"

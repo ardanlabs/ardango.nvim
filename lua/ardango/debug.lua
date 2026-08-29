@@ -23,10 +23,14 @@ local ui = require('ardango.ui')
 
 local M = {}
 
--- <plugin_root>/bin/ardango-dbg - this file is lua/ardango/debug.lua, so
--- three :h strips lua/ardango/ and the filename.
+-- This file is lua/ardango/debug.lua, so three :h strips lua/ardango/ and
+-- the filename to give the plugin root. The Delve proxy helper is built
+-- (lazily, on first use - see ensure_helper) from cmd/ardango-dbg into the
+-- cache dir, so it survives a plugin reinstall and a read-only plugin dir.
 local PLUGIN_ROOT = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h")
-local HELPER = PLUGIN_ROOT .. "/bin/ardango-dbg"
+local HELPER_SRC = PLUGIN_ROOT .. "/cmd/ardango-dbg"
+local HELPER_DIR = vim.fn.stdpath("cache") .. "/ardango"
+local HELPER = HELPER_DIR .. "/ardango-dbg"
 
 local SIGN_GROUP = "ardango_dbg"
 local POS_SIGN = "ardango_dbg_pos"
@@ -89,10 +93,12 @@ local function finish(s)
   end
   if session == s then
     session = nil
-    clear_position_sign()
     for _, bp in pairs(breakpoints) do
       bp.applied = false
     end
+    -- sign_unplace is a vim.fn call - finish() can run from a job
+    -- on_exit, so hop to a safe context for it.
+    vim.schedule(clear_position_sign)
   end
 end
 
@@ -137,23 +143,28 @@ local function dispatch(s, line)
   end
 end
 
--- jobstart delivers stdout as a list split on "\n" where the final element
--- is a partial line continued by the next callback. Rebuild the byte
--- stream into s.stdout_buf and peel off complete lines.
-local function handle_stdout(s, data)
-  if not data then
-    return
-  end
-  s.stdout_buf = s.stdout_buf .. table.concat(data, "\n")
-  while true do
-    local nl = s.stdout_buf:find("\n", 1, true)
-    if not nl then
-      break
+-- Returns a jobstart on_stdout handler that reassembles the byte stream
+-- (jobstart splits on "\n" and leaves the trailing partial line as the
+-- final list element, continued by the next callback) and calls on_line
+-- once per complete, non-empty line. Used for both the helper's JSON
+-- responses and dlv's "API server listening at:" line.
+local function line_reader(on_line)
+  local buf = ""
+  return function(_, data)
+    if not data then
+      return
     end
-    local line = s.stdout_buf:sub(1, nl - 1)
-    s.stdout_buf = s.stdout_buf:sub(nl + 1)
-    if line ~= "" then
-      dispatch(s, line)
+    buf = buf .. table.concat(data, "\n")
+    while true do
+      local nl = buf:find("\n", 1, true)
+      if not nl then
+        break
+      end
+      local line = buf:sub(1, nl - 1)
+      buf = buf:sub(nl + 1)
+      if line ~= "" then
+        on_line(line)
+      end
     end
   end
 end
@@ -207,7 +218,8 @@ end
 -- --------------------------------------------------------------------------
 
 local function open_at(file, line)
-  if api.nvim_buf_get_name(0) ~= vim.fn.fnamemodify(file, ":p") then
+  local target = vim.fn.resolve(vim.fn.fnamemodify(file, ":p"))
+  if vim.fn.resolve(api.nvim_buf_get_name(0)) ~= target then
     local ok, err = pcall(vim.cmd, "edit " .. vim.fn.fnameescape(file))
     if not ok then
       vim.notify("ardango: can't open " .. short(file) .. ": " .. err, vim.log.levels.WARN)
@@ -246,7 +258,7 @@ end
 
 local function connect_helper(s)
   s.helper_job = vim.fn.jobstart({ HELPER }, {
-    on_stdout = function(_, data) handle_stdout(s, data) end,
+    on_stdout = line_reader(function(line) dispatch(s, line) end),
     on_stderr = function(_, d)
       local txt = table.concat(d or {}, "\n")
       if txt:gsub("%s", "") ~= "" then
@@ -284,6 +296,74 @@ local function connect_helper(s)
   end)
 end
 
+-- True when HELPER exists and is at least as new as every .go file in
+-- cmd/ardango-dbg (so a plugin update that touches the helper triggers a
+-- rebuild).
+local function helper_fresh()
+  if vim.fn.executable(HELPER) ~= 1 then
+    return false
+  end
+  local bin_mtime = vim.fn.getftime(HELPER)
+  for _, f in ipairs(vim.fn.glob(HELPER_SRC .. "/*.go", false, true)) do
+    if vim.fn.getftime(f) > bin_mtime then
+      return false
+    end
+  end
+  return true
+end
+
+local helper_building = false
+local helper_waiters = {}
+
+local start_session -- defined below; called once the helper is ready
+
+-- Runs cb() once HELPER is present and up to date, building it (async, via
+-- `go build`) first if needed. cb is dropped (with a notification) if the
+-- build can't run or fails.
+local function ensure_helper(cb)
+  if helper_fresh() then
+    cb()
+    return
+  end
+  table.insert(helper_waiters, cb)
+  if helper_building then
+    return
+  end
+  if vim.fn.executable("go") ~= 1 then
+    helper_waiters = {}
+    vim.notify("ardango: the debug helper needs building but `go` isn't on PATH", vim.log.levels.ERROR)
+    return
+  end
+
+  helper_building = true
+  vim.fn.mkdir(HELPER_DIR, "p")
+  vim.notify("ardango: building debug helper...", vim.log.levels.INFO)
+  vim.fn.jobstart({ "go", "build", "-o", HELPER, "./cmd/ardango-dbg" }, {
+    cwd = PLUGIN_ROOT,
+    on_stderr = function(_, d)
+      local t = table.concat(d or {}, "\n")
+      if t:gsub("%s", "") ~= "" then
+        vim.schedule(function() vim.notify("ardango: go build: " .. t, vim.log.levels.WARN) end)
+      end
+    end,
+    on_exit = function(_, code)
+      helper_building = false
+      local waiters = helper_waiters
+      helper_waiters = {}
+      vim.schedule(function()
+        if code ~= 0 or vim.fn.executable(HELPER) ~= 1 then
+          vim.notify("ardango: debug helper build failed (exit " .. code .. ")", vim.log.levels.ERROR)
+          return
+        end
+        vim.notify("ardango: debug helper built", vim.log.levels.INFO)
+        for _, w in ipairs(waiters) do
+          w()
+        end
+      end)
+    end,
+  })
+end
+
 -- spec = { mode = "test" | "bench" | "package", dir = <absolute buffer dir>,
 --          run = <Test name> (mode "test"), bench = <Benchmark name> (mode "bench") }
 -- dlv runs with its cwd set to spec.dir and `.` as the package, so the
@@ -294,18 +374,16 @@ function M.start(spec)
       "(https://github.com/go-delve/delve)", vim.log.levels.ERROR)
     return
   end
-  if vim.fn.executable(HELPER) ~= 1 then
-    vim.notify("ardango: debug helper not built (" .. HELPER .. ") — run dev/setup.sh " ..
-      "or: go build -o bin/ardango-dbg ./cmd/ardango-dbg", vim.log.levels.ERROR)
-    return
-  end
+  ensure_helper(function() start_session(spec) end)
+end
 
+start_session = function(spec)
   if session then
     vim.notify("ardango: restarting debug session", vim.log.levels.INFO)
     M.stop()
   end
 
-  local s = { next_id = 1, pending = {}, pending_clears = {}, stdout_buf = "" }
+  local s = { next_id = 1, pending = {}, pending_clears = {} }
   session = s
 
   local wd = (spec.dir and spec.dir ~= "") and spec.dir or vim.fn.getcwd()
@@ -313,6 +391,7 @@ function M.start(spec)
     "dlv", spec.mode == "package" and "debug" or "test", ".",
     "--headless", "--listen=127.0.0.1:0", "--api-version=2", "--accept-multiclient",
   }
+  vim.list_extend(cmd, (config.options.debug and config.options.debug.dlv_args) or {})
   if spec.mode == "test" then
     vim.list_extend(cmd, { "--", "-test.run", "^" .. spec.run .. "$" })
   elseif spec.mode == "bench" then
@@ -324,15 +403,13 @@ function M.start(spec)
 
   s.dlv_job = vim.fn.jobstart(cmd, {
     cwd = wd,
-    on_stdout = function(_, data)
-      for _, l in ipairs(data or {}) do
-        local addr = l:match("API server listening at:%s+(%S+)")
-        if addr and not s.addr then
-          s.addr = addr
-          vim.schedule(function() connect_helper(s) end)
-        end
+    on_stdout = line_reader(function(line)
+      local addr = line:match("API server listening at:%s+(%S+)")
+      if addr and not s.addr then
+        s.addr = addr
+        vim.schedule(function() connect_helper(s) end)
       end
-    end,
+    end),
     on_stderr = function(_, data)
       local txt = table.concat(data or {}, "\n")
       if txt:gsub("%s", "") ~= "" then
@@ -355,6 +432,17 @@ function M.start(spec)
     finish(s)
     return
   end
+
+  -- Watchdog: if dlv never prints its listen address (stalled build, wrong
+  -- package, ...) and hasn't exited either, don't leave a half-started
+  -- session hanging silently.
+  vim.defer_fn(function()
+    if session == s and not s.addr and not s.stopping then
+      vim.notify("ardango: dlv didn't report a listen address within 15s — giving up",
+        vim.log.levels.ERROR)
+      finish(s)
+    end
+  end, 15000)
 end
 
 function M.stop()
@@ -505,7 +593,11 @@ function M.eval(expr)
   end)
 end
 
--- DebugLocals: the current frame's args + locals, in the results popup.
+-- Own popup state so DebugLocals/DebugStack don't unmount (or get
+-- unmounted by) the shared test/build results popup.
+local inspect_popup_state = { bufnr = nil, popup = nil }
+
+-- DebugLocals: the current frame's args + locals, in a popup.
 function M.locals()
   local s = session
   if not inspect_ok(s) then
@@ -516,12 +608,12 @@ function M.locals()
       vim.notify("ardango: locals: " .. (resp.error or "?"), vim.log.levels.WARN)
       return
     end
-    ui.show_popup(resp.lines or { "(no variables in scope)" }, vim.fn.getcwd())
+    ui.show_popup(resp.lines or { "(no variables in scope)" }, vim.fn.getcwd(), inspect_popup_state)
   end)
 end
 
--- DebugStack: the current goroutine's call stack, in the results popup.
--- Lines lead with file:line so the popup's <CR> jumps to the frame.
+-- DebugStack: the current goroutine's call stack, in a popup. Lines lead
+-- with file:line so the popup's <CR> jumps to the frame.
 function M.stack()
   local s = session
   if not inspect_ok(s) then
@@ -532,7 +624,7 @@ function M.stack()
       vim.notify("ardango: stack: " .. (resp.error or "?"), vim.log.levels.WARN)
       return
     end
-    ui.show_popup(resp.lines or { "(empty stack)" }, vim.fn.getcwd())
+    ui.show_popup(resp.lines or { "(empty stack)" }, vim.fn.getcwd(), inspect_popup_state)
   end)
 end
 
@@ -583,10 +675,18 @@ end
 
 api.nvim_create_autocmd("VimLeavePre", {
   callback = function()
-    if session then
-      pcall(vim.fn.jobstop, session.helper_job)
-      pcall(vim.fn.jobstop, session.dlv_job)
+    local s = session
+    if not s then
+      return
     end
+    if s.helper_job then
+      -- Give the helper up to 500ms to Halt + Detach(kill) dlv cleanly so
+      -- the compiled test binary doesn't outlive the editor; then hard-stop.
+      pcall(vim.fn.chansend, s.helper_job, vim.json.encode({ id = -1, op = "stop" }) .. "\n")
+      pcall(vim.fn.jobwait, { s.helper_job }, 500)
+      pcall(vim.fn.jobstop, s.helper_job)
+    end
+    pcall(vim.fn.jobstop, s.dlv_job)
   end,
 })
 

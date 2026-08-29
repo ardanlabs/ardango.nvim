@@ -46,6 +46,25 @@ local function check_gofmt()
   end
 end
 
+local function check_dlv()
+  if vim.fn.executable("dlv") == 1 then
+    vim.health.ok("`dlv` (Delve) found on PATH (" .. vim.fn.exepath("dlv") .. ")")
+  else
+    vim.health.warn("`dlv` (Delve) not found on PATH (optional)",
+      "Install Delve (https://github.com/go-delve/delve) for the Debug* commands")
+  end
+end
+
+local function check_debug_helper()
+  local helper = vim.fn.stdpath("cache") .. "/ardango/ardango-dbg"
+  if vim.fn.executable(helper) == 1 then
+    vim.health.ok("debug helper built (" .. helper .. ")")
+  else
+    vim.health.warn("debug helper not built yet (optional)",
+      "It builds automatically (needs `go`) on the first Debug* command, or via dev/setup.sh")
+  end
+end
+
 M.check = function()
   vim.health.start("ardango.nvim")
   check_go_binary()
@@ -53,6 +72,8 @@ M.check = function()
   check_nui()
   check_telescope()
   check_gofmt()
+  check_dlv()
+  check_debug_helper()
 end
 
 return M

@@ -13,6 +13,12 @@ M.defaults = {
   -- to win over everything else, since a bare `-` means "skip this field"
   -- per Go tag convention - keep that in mind if you remove it here.
   tag_options = { "omitempty", "-", "required" },
+  -- Debug (Delve) settings.
+  debug = {
+    -- Extra flags for `dlv test` / `dlv debug`, inserted before the `--`
+    -- test-args separator, e.g. { "--build-flags=-tags=integration" }.
+    dlv_args = {},
+  },
 }
 
 M.options = vim.deepcopy(M.defaults)
@@ -35,6 +41,10 @@ M.setup = function(opts)
   M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
   if opts.tag_options then
     M.options.tag_options = vim.deepcopy(opts.tag_options)
+  end
+  -- Same array-replace (not merge) treatment as tag_options.
+  if opts.debug and opts.debug.dlv_args then
+    M.options.debug.dlv_args = vim.deepcopy(opts.debug.dlv_args)
   end
 end
 

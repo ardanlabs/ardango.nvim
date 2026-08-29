@@ -627,6 +627,10 @@ end, {
     for w in prefix:gmatch("%S+") do
       table.insert(prefix_words, w)
     end
+    -- DebugEval's argument is a free-text expression, not a flag.
+    if prefix_words[2] == "DebugEval" then
+      return {}
+    end
     local candidates = (#prefix_words <= 1) and EX_COMMANDS or BOOL_OPTS
     return vim.tbl_filter(function(c) return c:find(arglead, 1, true) == 1 end, candidates)
   end,

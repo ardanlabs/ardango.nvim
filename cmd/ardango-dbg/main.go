@@ -317,11 +317,20 @@ func (s *server) listLocals(req request) {
 
 	var lines []string
 	section := func(header string, vars []api.Variable) {
-		if len(vars) == 0 {
+		var shown []api.Variable
+		for _, v := range vars {
+			// Delve lists a function's return slots (~r0, ~r1, ...) as
+			// args; they're just zero values until the function returns.
+			if strings.HasPrefix(v.Name, "~") {
+				continue
+			}
+			shown = append(shown, v)
+		}
+		if len(shown) == 0 {
 			return
 		}
 		lines = append(lines, header)
-		for _, v := range vars {
+		for _, v := range shown {
 			lines = append(lines, "  "+v.Name+" = "+v.SinglelineString())
 		}
 	}
@@ -481,5 +490,14 @@ func main() {
 			continue
 		}
 		s.handle(req)
+	}
+
+	// stdin closed - Neovim is gone, possibly without sending "stop" (a
+	// crash / SIGKILL). Don't let the debuggee outlive us.
+	s.mu.Lock()
+	c := s.client
+	s.mu.Unlock()
+	if c != nil {
+		_ = c.Detach(true)
 	}
 }
