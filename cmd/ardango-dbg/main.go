@@ -267,13 +267,21 @@ func (s *server) evalVar(req request) {
 	}
 
 	rendered := v.StringWithOptions("    ", "", api.PrettyNewlines|api.PrettyShortenType)
+	if rendered == "" {
+		rendered = "(no value)"
+	}
 	valueLines := strings.Split(strings.TrimRight(rendered, "\n"), "\n")
 
+	// "<type> = <value>" for a scalar, "<type> =" + value lines for a
+	// composite. Untyped values (v.Type == "", e.g. `1+1`) get just the
+	// value, no "type =" preamble.
 	var lines []string
-	if len(valueLines) == 1 {
-		// Scalar / compact value - keep it on one line, LSP-hover style.
+	switch {
+	case v.Type == "":
+		lines = valueLines
+	case len(valueLines) == 1:
 		lines = []string{v.Type + " = " + valueLines[0]}
-	} else {
+	default:
 		lines = append([]string{v.Type + " ="}, valueLines...)
 	}
 	s.send(response{ID: req.ID, OK: true, Lines: lines})
@@ -357,7 +365,10 @@ func (s *server) stackTrace(req request) {
 		if f.Function != nil {
 			fn = f.Function.Name()
 		}
-		lines = append(lines, fmt.Sprintf("%s:%d  #%d  %s", f.File, f.Line, i, fn))
+		// Trailing colon after the line number: Neovim's results-popup
+		// <CR> handler (ui.lua parse_line) matches "file.go:LINE:" and
+		// won't jump without it.
+		lines = append(lines, fmt.Sprintf("%s:%d:  #%d  %s", f.File, f.Line, i, fn))
 	}
 	if len(lines) == 0 {
 		lines = []string{"(empty stack)"}
