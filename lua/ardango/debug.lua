@@ -238,6 +238,18 @@ local function open_at(file, line)
   return api.nvim_get_current_buf()
 end
 
+-- Jumps to file:line and puts the ▶ position sign there.
+local function place_stop_sign(file, line)
+  if not file or file == "" then
+    return
+  end
+  local bufnr = open_at(file, line)
+  if bufnr then
+    clear_position_sign()
+    vim.fn.sign_place(POS_SIGN_ID, SIGN_GROUP, POS_SIGN, bufnr, { lnum = line, priority = 20 })
+  end
+end
+
 local function show_stop(s, st)
   -- A fresh stop invalidates any frame the user had navigated to.
   s.frame = 0
@@ -248,11 +260,7 @@ local function show_stop(s, st)
       vim.log.levels.WARN)
     return
   end
-  local bufnr = open_at(st.file, st.line)
-  if bufnr then
-    clear_position_sign()
-    vim.fn.sign_place(POS_SIGN_ID, SIGN_GROUP, POS_SIGN, bufnr, { lnum = st.line, priority = 20 })
-  end
+  place_stop_sign(st.file, st.line)
   -- Breakpoint edits made while the target was running land now (clears
   -- before adds, in case the same line was toggled off then on).
   flush_pending_clears(s)
@@ -739,6 +747,66 @@ function M.frame(n)
       vim.notify("ardango: no frame #" .. n .. " (stack is " .. #frames .. " deep)",
         vim.log.levels.WARN)
     end
+  end)
+end
+
+-- --------------------------------------------------------------------------
+-- goroutines
+-- --------------------------------------------------------------------------
+
+-- DebugGoroutines: every goroutine with its user-code location, in a
+-- popup. Lines lead with file:line so <CR> jumps there; the selected one
+-- is marked "<- current". Switch with :Ardango DebugGoroutine {id}.
+function M.goroutines()
+  local s = session
+  if not inspect_ok(s) then
+    return
+  end
+  send(s, { op = "goroutines" }, function(resp)
+    if not resp.ok then
+      vim.notify("ardango: goroutines: " .. (resp.error or "?"), vim.log.levels.WARN)
+      return
+    end
+    local gs = resp.goroutines or {}
+    local lines = {}
+    for i, g in ipairs(gs) do
+      local loc = (g.file ~= "" and g.file ~= nil) and (g.file .. ":" .. g.line .. ":") or "(no source):"
+      lines[i] = string.format("%s  goroutine %d  [%s]  %s%s", loc, g.id, g.status,
+        g["function"] or "?", g.current and "  <- current" or "")
+    end
+    if #lines == 0 then
+      lines = { "(no goroutines)" }
+    end
+    ui.show_popup(lines, vim.fn.getcwd(), inspect_popup_state)
+  end)
+end
+
+-- DebugGoroutine {id}: make goroutine {id} the selected one. Locals/eval/
+-- stack then reflect it; the position sign moves to its location.
+function M.switch_goroutine(id)
+  local s = session
+  if not inspect_ok(s) then
+    return
+  end
+  id = tonumber(id)
+  if not id then
+    vim.notify("ardango: DebugGoroutine needs a goroutine id (see :Ardango DebugGoroutines)",
+      vim.log.levels.WARN)
+    return
+  end
+  send(s, { op = "switchgoroutine", goroutine = id }, function(resp)
+    if not resp.ok then
+      vim.notify("ardango: switch to goroutine " .. id .. ": " .. (resp.error or "?"),
+        vim.log.levels.WARN)
+      return
+    end
+    s.frame = 0
+    s.frames = nil
+    local st = resp.stopped or {}
+    place_stop_sign(st.file, st.line)
+    local where = (st["function"] and st.file and st.file ~= "")
+        and (" (" .. st["function"] .. " " .. short(st.file) .. ":" .. (st.line or 0) .. ")") or ""
+    vim.notify("ardango: switched to goroutine " .. (st.goroutine or id) .. where, vim.log.levels.INFO)
   end)
 end
 

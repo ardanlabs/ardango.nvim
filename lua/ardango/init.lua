@@ -291,6 +291,11 @@ M.DebugFrameUp = dbg.frame_up
 M.DebugFrameDown = dbg.frame_down
 M.DebugFrame = dbg.frame
 
+-- DebugGoroutines lists all goroutines in a popup; DebugGoroutine {id}
+-- switches the selected goroutine (locals/eval/stack then follow it).
+M.DebugGoroutines = dbg.goroutines
+M.DebugGoroutine = dbg.switch_goroutine
+
 -- OrgImports is a function to update imports of the current buffer.
 M.OrgBufImports = function(wait_ms)
   local params = vim.lsp.util.make_range_params()
@@ -562,6 +567,7 @@ local EX_COMMANDS = {
   "DebugCurrTest", "DebugCurrBenchmark", "DebugPackage",
   "DebugBreakpoint", "DebugContinue", "DebugNext", "DebugStep", "DebugStepOut", "DebugStop",
   "DebugEval", "DebugLocals", "DebugStack", "DebugFrameUp", "DebugFrameDown", "DebugFrame",
+  "DebugGoroutines", "DebugGoroutine",
   "AddTagToField", "AddTagsToStruct", "RemoveTagFromField", "RemoveTagsFromStruct",
   "AddTagToVisualFields", "RemoveTagFromVisualFields",
   "OrgBufImports", "SignatureInStatusLine",
@@ -600,9 +606,13 @@ vim.api.nvim_create_user_command("Ardango", function(cmd_opts)
     return
   end
 
-  -- DebugFrame takes a frame number.
+  -- DebugFrame takes a frame number, DebugGoroutine a goroutine id.
   if name == "DebugFrame" then
     M.DebugFrame(tonumber(rest[1]))
+    return
+  end
+  if name == "DebugGoroutine" then
+    M.DebugGoroutine(tonumber(rest[1]))
     return
   end
 
@@ -640,8 +650,10 @@ end, {
     for w in prefix:gmatch("%S+") do
       table.insert(prefix_words, w)
     end
-    -- DebugEval / DebugFrame take a free-text expression / a number, not a flag.
-    if prefix_words[2] == "DebugEval" or prefix_words[2] == "DebugFrame" then
+    -- DebugEval / DebugFrame / DebugGoroutine take a free-text expression
+    -- or a number, not a flag.
+    if prefix_words[2] == "DebugEval" or prefix_words[2] == "DebugFrame"
+        or prefix_words[2] == "DebugGoroutine" then
       return {}
     end
     local candidates = (#prefix_words <= 1) and EX_COMMANDS or BOOL_OPTS

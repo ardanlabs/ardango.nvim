@@ -63,14 +63,15 @@ func exitStatus(err error) (int, bool) {
 }
 
 type request struct {
-	ID    int    `json:"id"`
-	Op    string `json:"op"`
-	Addr  string `json:"addr"`
-	File  string `json:"file"`
-	Line  int    `json:"line"`
-	Expr  string `json:"expr"`  // op "eval"
-	Frame int    `json:"frame"` // op "eval"/"locals": stack frame, 0 = innermost
-	Depth int    `json:"depth"` // op "stack": max frames
+	ID        int    `json:"id"`
+	Op        string `json:"op"`
+	Addr      string `json:"addr"`
+	File      string `json:"file"`
+	Line      int    `json:"line"`
+	Expr      string `json:"expr"`      // op "eval"
+	Frame     int    `json:"frame"`     // op "eval"/"locals": stack frame, 0 = innermost
+	Depth     int    `json:"depth"`     // op "stack": max frames
+	Goroutine int64  `json:"goroutine"` // op "switchgoroutine"
 }
 
 // How much to load when evaluating an expression - generous enough for a
@@ -107,15 +108,25 @@ type frameInfo struct {
 	Function string `json:"function"`
 }
 
+type goroutineInfo struct {
+	ID       int64  `json:"id"`
+	Current  bool   `json:"current"`
+	Status   string `json:"status"`
+	Function string `json:"function"`
+	File     string `json:"file"`
+	Line     int    `json:"line"`
+}
+
 type response struct {
-	ID         int         `json:"id"`
-	OK         bool        `json:"ok"`
-	Error      string      `json:"error,omitempty"`
-	Breakpoint *bpInfo     `json:"breakpoint,omitempty"`
-	Stopped    *stopInfo   `json:"stopped,omitempty"`
-	Terminated *termInfo   `json:"terminated,omitempty"`
-	Lines      []string    `json:"lines,omitempty"`  // op "eval"/"locals": rendered text
-	Frames     []frameInfo `json:"frames,omitempty"` // op "stack"
+	ID         int             `json:"id"`
+	OK         bool            `json:"ok"`
+	Error      string          `json:"error,omitempty"`
+	Breakpoint *bpInfo         `json:"breakpoint,omitempty"`
+	Stopped    *stopInfo       `json:"stopped,omitempty"`
+	Terminated *termInfo       `json:"terminated,omitempty"`
+	Lines      []string        `json:"lines,omitempty"`  // op "eval"/"locals": rendered text
+	Frames     []frameInfo     `json:"frames,omitempty"` // op "stack"
+	Goroutines []goroutineInfo `json:"goroutines,omitempty"`
 }
 
 type server struct {
@@ -159,6 +170,10 @@ func (s *server) handle(req request) {
 		s.listLocals(req)
 	case "stack":
 		s.stackTrace(req)
+	case "goroutines":
+		s.listGoroutines(req)
+	case "switchgoroutine":
+		s.switchGoroutine(req)
 	case "stop":
 		s.mu.Lock()
 		s.stopping = true
@@ -384,6 +399,111 @@ func (s *server) stackTrace(req request) {
 		out = append(out, frameInfo{File: f.File, Line: f.Line, Function: fn})
 	}
 	s.send(response{ID: req.ID, OK: true, Frames: out})
+}
+
+// Go runtime goroutine status (runtime/runtime2.go gStatus); api.Goroutine
+// exposes it as a raw number.
+func goroutineStatus(n uint64) string {
+	switch n {
+	case 0:
+		return "idle"
+	case 1:
+		return "runnable"
+	case 2:
+		return "running"
+	case 3:
+		return "syscall"
+	case 4:
+		return "waiting"
+	case 6:
+		return "dead"
+	case 8:
+		return "copystack"
+	case 9:
+		return "preempted"
+	default:
+		return fmt.Sprintf("status %d", n)
+	}
+}
+
+func locFunc(loc api.Location) string {
+	if loc.Function != nil {
+		return loc.Function.Name()
+	}
+	return "?"
+}
+
+// listGoroutines returns every goroutine with its user-code location and
+// status, flagging the currently selected one. Halted target only.
+func (s *server) listGoroutines(req request) {
+	s.mu.Lock()
+	client := s.client
+	busy := s.busy
+	s.mu.Unlock()
+	if client == nil {
+		s.fail(req.ID, fmt.Errorf("not connected"))
+		return
+	}
+	if busy {
+		s.fail(req.ID, fmt.Errorf("target is running"))
+		return
+	}
+
+	gs, _, err := client.ListGoroutines(0, 1000)
+	if err != nil {
+		s.fail(req.ID, err)
+		return
+	}
+
+	var cur int64 = -1
+	if st, err := client.GetState(); err == nil && st != nil && st.SelectedGoroutine != nil {
+		cur = st.SelectedGoroutine.ID
+	}
+
+	out := make([]goroutineInfo, 0, len(gs))
+	for _, g := range gs {
+		out = append(out, goroutineInfo{
+			ID:       g.ID,
+			Current:  g.ID == cur,
+			Status:   goroutineStatus(g.Status),
+			Function: locFunc(g.UserCurrentLoc),
+			File:     g.UserCurrentLoc.File,
+			Line:     g.UserCurrentLoc.Line,
+		})
+	}
+	s.send(response{ID: req.ID, OK: true, Goroutines: out})
+}
+
+// switchGoroutine makes req.Goroutine the selected goroutine; the response
+// carries its user-code location so Neovim can move the position sign.
+func (s *server) switchGoroutine(req request) {
+	s.mu.Lock()
+	client := s.client
+	busy := s.busy
+	s.mu.Unlock()
+	if client == nil {
+		s.fail(req.ID, fmt.Errorf("not connected"))
+		return
+	}
+	if busy {
+		s.fail(req.ID, fmt.Errorf("target is running"))
+		return
+	}
+
+	st, err := client.SwitchGoroutine(req.Goroutine)
+	if err != nil {
+		s.fail(req.ID, err)
+		return
+	}
+
+	si := &stopInfo{Reason: "goroutine switch", Goroutine: req.Goroutine}
+	if g := st.SelectedGoroutine; g != nil {
+		si.Goroutine = g.ID
+		si.File = g.UserCurrentLoc.File
+		si.Line = g.UserCurrentLoc.Line
+		si.Function = locFunc(g.UserCurrentLoc)
+	}
+	s.send(response{ID: req.ID, OK: true, Stopped: si})
 }
 
 func (s *server) run(req request) {
