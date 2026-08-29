@@ -238,15 +238,18 @@ Requirements ~
 Starting a session ~
 
 ardango.DebugCurrTest()                                  *ardango.DebugCurrTest*
-    Builds and debugs the Test* function under the cursor (dlv test),
-    stopping at its entry. Drive it with the stepping commands below.
+    Builds and debugs the Test* function under the cursor (dlv test) and
+    stops on its first line (a one-shot entry breakpoint, cleared once
+    hit). Drive it from there with the stepping commands below.
 
 ardango.DebugCurrBenchmark()                        *ardango.DebugCurrBenchmark*
     Same for the Benchmark* function under the cursor
     (dlv test -- -test.run ^$ -test.bench ^Name$ -test.benchmem).
 
 ardango.DebugPackage()                                    *ardango.DebugPackage*
-    Debugs the current buffer's package as a program (dlv debug).
+    Debugs the current buffer's package as a program (dlv debug). Unlike
+    the two above it does not auto-stop - set a breakpoint, then
+    |ardango.DebugContinue|.
 
 ardango.DebugStop()                                          *ardango.DebugStop*
     Ends the session: detaches and kills the debuggee, clears the signs.
@@ -283,7 +286,10 @@ ardango.DebugEval({expr})                                    *ardango.DebugEval*
     <cexpr> under the cursor (`p`, `p.Name`, `xs[i]`, ...).
 
 ardango.DebugLocals()                                      *ardango.DebugLocals*
-    List the selected frame's arguments and local variables in a popup.
+    List the selected frame's arguments and local variables in a popup
+    ("-- args --" / "-- locals --" / "-- returns --"), one line each,
+    values capped for the list view - use |ardango.DebugEval| for the
+    full value.
 
 ardango.DebugStack()                                        *ardango.DebugStack*
     Show the current goroutine's call stack in a popup. Press <CR> on a

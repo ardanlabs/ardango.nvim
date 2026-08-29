@@ -44,7 +44,7 @@ Drive a [Delve](https://github.com/go-delve/delve) session on the current
 buffer's package without leaving Neovim — one session at a time, with a
 breakpoint sign in the gutter and the stop location marked and jumped to.
 
-- __DebugCurrTest__ / __DebugCurrBenchmark__ / __DebugPackage__: start a session on the `Test*`/`Benchmark*` function under the cursor (`dlv test`) or on the package (`dlv debug`), stopping at entry.
+- __DebugCurrTest__ / __DebugCurrBenchmark__: start a session on the `Test*`/`Benchmark*` function under the cursor (`dlv test`) and stop on its first line. __DebugPackage__: `dlv debug` the current package (no auto-stop — set a breakpoint first).
 - __DebugContinue__ / __DebugNext__ / __DebugStep__ / __DebugStepOut__: run / step over / step into / step out (only while halted).
 - __DebugBreakpoint__: toggle a breakpoint on the current line. Works with no session running; breakpoints persist across sessions.
 - __DebugEval__: show the value of an expression — the identifier under the cursor by default (`p`, `p.Name`, `xs[i]`), or `:Ardango DebugEval <expr>` — in a floating window, like an LSP hover.
@@ -76,6 +76,14 @@ vim.keymap.set('n', '<leader>d[', ardango.DebugFrameUp, opts)
 vim.keymap.set('n', '<leader>d]', ardango.DebugFrameDown, opts)
 vim.keymap.set('n', '<leader>dg', ardango.DebugGoroutines, opts)
 vim.keymap.set('n', '<leader>dq', ardango.DebugStop, opts)
+
+-- Run control gets hit constantly — single keys (matching nvim-dap's
+-- defaults) are easier on the hands:
+vim.keymap.set('n', '<F5>',    ardango.DebugContinue, opts)
+vim.keymap.set('n', '<F9>',    ardango.DebugBreakpoint, opts)
+vim.keymap.set('n', '<F10>',   ardango.DebugNext, opts)
+vim.keymap.set('n', '<F11>',   ardango.DebugStep, opts)
+vim.keymap.set('n', '<S-F11>', ardango.DebugStepOut, opts)
 ```
 
 ## Dependencies
