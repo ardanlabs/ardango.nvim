@@ -34,12 +34,32 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
 )
+
+// Delve reports "the process finished during continue/step" as an RPC
+// error string (not a DebuggerState with Exited=true), e.g.
+// "Process 12345 has exited with status 0". Match it so we can turn it
+// into a clean `terminated` response.
+var procExitedRe = regexp.MustCompile(`has exited with status (-?\d+)`)
+
+func exitStatus(err error) (int, bool) {
+	if err == nil {
+		return 0, false
+	}
+	m := procExitedRe.FindStringSubmatch(err.Error())
+	if m == nil {
+		return 0, false
+	}
+	n, _ := strconv.Atoi(m[1])
+	return n, true
+}
 
 type request struct {
 	ID   int    `json:"id"`
@@ -226,6 +246,10 @@ func (s *server) run(req request) {
 			st, err = client.StepOut()
 		}
 
+		if code, ok := exitStatus(err); ok {
+			s.send(response{ID: req.ID, OK: true, Terminated: &termInfo{ExitStatus: code}})
+			return
+		}
 		if err != nil {
 			s.fail(req.ID, err)
 			return

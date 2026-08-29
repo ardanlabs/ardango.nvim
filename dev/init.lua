@@ -49,3 +49,14 @@ vim.keymap.set("x", "<leader>tavf", "<Esc>:lua require('ardango').AddTagToVisual
 vim.keymap.set("x", "<leader>trvf", "<Esc>:lua require('ardango').RemoveTagFromVisualFields()<CR>", opts)
 vim.keymap.set("n", "<leader>gh", function() ardango.SignatureInStatusLine(1000) end, opts)
 vim.keymap.set("n", "<leader>gH", function() ardango.SignatureInStatusLine(1000, { float = true }) end, opts)
+
+-- Delve debugging (needs `dlv` on PATH + bin/ardango-dbg built by setup.sh).
+vim.keymap.set("n", "<leader>dt", ardango.DebugCurrTest, opts)
+vim.keymap.set("n", "<leader>dB", ardango.DebugCurrBenchmark, opts)
+vim.keymap.set("n", "<leader>dP", ardango.DebugPackage, opts)
+vim.keymap.set("n", "<leader>db", ardango.DebugBreakpoint, opts)
+vim.keymap.set("n", "<leader>dc", ardango.DebugContinue, opts)
+vim.keymap.set("n", "<leader>dn", ardango.DebugNext, opts)
+vim.keymap.set("n", "<leader>ds", ardango.DebugStep, opts)
+vim.keymap.set("n", "<leader>do", ardango.DebugStepOut, opts)
+vim.keymap.set("n", "<leader>dq", ardango.DebugStop, opts)

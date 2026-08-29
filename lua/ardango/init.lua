@@ -1,5 +1,6 @@
 local ui = require('ardango.ui')
 local config = require('ardango.config')
+local dbg = require('ardango.debug')
 
 local M = {}
 
@@ -219,6 +220,59 @@ M.RunLastTest = function(opts)
     last_invocation.opts or {}, { dry_run = false }, opts or {})
   run_job(last_invocation.cmd, last_invocation.label, last_invocation.current_dir, merged_opts)
 end
+
+-- Debug commands - drive Delve through lua/ardango/debug.lua (which spawns
+-- `dlv --headless` + the bin/ardango-dbg proxy). DebugCurrTest/
+-- DebugCurrBenchmark find the function under the cursor the same way
+-- RunCurrTest/RunCurrBenchmark do, then hand off to debug.start; the rest
+-- are session controls (no cursor context needed).
+
+-- Starts a Delve session on the Test* function under the cursor and stops
+-- at its first line. Drive it with DebugContinue/DebugNext/DebugStep/
+-- DebugStepOut, set stops with DebugBreakpoint, end it with DebugStop.
+M.DebugCurrTest = function()
+  local current_dir = vim.fn.expand('%:p:h')
+  local cursor = api.nvim_win_get_cursor(0)
+  local bufnr = api.nvim_get_current_buf()
+  local root = get_root(bufnr)
+
+  for _, node in test_query:iter_captures(root, bufnr, 0, -1) do
+    if vim.treesitter.is_in_node_range(node:parent(), cursor[1] - 1, cursor[2]) then
+      dbg.start({ mode = "test", dir = current_dir, run = vim.treesitter.get_node_text(node, bufnr) })
+      return
+    end
+  end
+  vim.notify("ardango: no Test function under the cursor", vim.log.levels.WARN)
+end
+
+-- Starts a Delve session on the Benchmark* function under the cursor
+-- (dlv test -- -test.bench ^Name$ -test.run ^$ -test.benchmem).
+M.DebugCurrBenchmark = function()
+  local current_dir = vim.fn.expand('%:p:h')
+  local cursor = api.nvim_win_get_cursor(0)
+  local bufnr = api.nvim_get_current_buf()
+  local root = get_root(bufnr)
+
+  for _, node in bench_query:iter_captures(root, bufnr, 0, -1) do
+    if vim.treesitter.is_in_node_range(node:parent(), cursor[1] - 1, cursor[2]) then
+      dbg.start({ mode = "bench", dir = current_dir, bench = vim.treesitter.get_node_text(node, bufnr) })
+      return
+    end
+  end
+  vim.notify("ardango: no Benchmark function under the cursor", vim.log.levels.WARN)
+end
+
+-- Starts a Delve session on the current buffer's package (dlv debug).
+M.DebugPackage = function()
+  dbg.start({ mode = "package", dir = vim.fn.expand('%:p:h') })
+end
+
+M.DebugContinue = dbg.continue
+M.DebugNext = dbg.step_over
+M.DebugStep = dbg.step_into
+M.DebugStepOut = dbg.step_out
+M.DebugBreakpoint = dbg.toggle_breakpoint
+M.DebugStop = dbg.stop
 
 -- OrgImports is a function to update imports of the current buffer.
 M.OrgBufImports = function(wait_ms)
@@ -488,6 +542,8 @@ end
 local EX_COMMANDS = {
   "RunCurrTest", "RunFileTests", "RunPackageTests", "RunCurrBenchmark",
   "BuildCurrPackage", "RunLastTest", "CopyLastCmd",
+  "DebugCurrTest", "DebugCurrBenchmark", "DebugPackage",
+  "DebugBreakpoint", "DebugContinue", "DebugNext", "DebugStep", "DebugStepOut", "DebugStop",
   "AddTagToField", "AddTagsToStruct", "RemoveTagFromField", "RemoveTagsFromStruct",
   "AddTagToVisualFields", "RemoveTagFromVisualFields",
   "OrgBufImports", "SignatureInStatusLine",
