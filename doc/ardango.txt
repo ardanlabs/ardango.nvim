@@ -79,6 +79,7 @@ Example keymaps: >lua
     vim.keymap.set("n", "<leader>dS", ardango.DebugStack, opts)
     vim.keymap.set("n", "<leader>d[", ardango.DebugFrameUp, opts)
     vim.keymap.set("n", "<leader>d]", ardango.DebugFrameDown, opts)
+    vim.keymap.set("n", "<leader>dg", ardango.DebugGoroutines, opts)
     vim.keymap.set("n", "<leader>dq", ardango.DebugStop, opts)
 
     -- Update imports on save.
@@ -304,10 +305,24 @@ ardango.DebugFrame({n})                                      *ardango.DebugFrame
 The selected frame resets to 0 on the next
 Continue/Next/Step/StepOut.
 
+Goroutines (only while the target is halted) ~
+
+ardango.DebugGoroutines()                              *ardango.DebugGoroutines*
+    List every goroutine in a popup - user-code location, status,
+    function - with the selected one marked "<- current". <CR> on a line
+    jumps to that source.
+
+ardango.DebugGoroutine({id})                            *ardango.DebugGoroutine*
+    Make goroutine {id} (from |ardango.DebugGoroutines|) the selected
+    one. The position sign moves to its location, the frame resets to 0,
+    and |ardango.DebugLocals| / |ardango.DebugEval| / |ardango.DebugStack|
+    then reflect it.
+
 All of these are also reachable via :Ardango, see |ardango-ex-command|.
 :Ardango DebugEval takes the rest of the line as the expression
 (:Ardango DebugEval p.Name); with none it uses the <cexpr>. :Ardango
-DebugFrame takes the frame number (:Ardango DebugFrame 2).
+DebugFrame / :Ardango DebugGoroutine take the frame number / goroutine id
+(:Ardango DebugFrame 2, :Ardango DebugGoroutine 34).
 
 ==============================================================================
 6. Configuration                                          *ardango-configuration*

@@ -86,7 +86,7 @@ the README recommends:
 - `<leader>d…` — the `Debug*` commands: `dt`/`dB`/`dP` start on
   test/benchmark/package, `db` toggle breakpoint, `dc`/`dn`/`ds`/`do`
   continue/next/step/stepout, `de`/`dl`/`dS` eval/locals/stack,
-  `d[`/`d]` frame up/down, `dq` stop
+  `d[`/`d]` frame up/down, `dg` goroutines, `dq` stop
 
 ## Fixtures (`dev/testdata/`)
 
@@ -159,6 +159,9 @@ pulls the Delve module and takes a bit). Run after any change to
 | `DebugFrameDown` (back to 0) / `DebugFrame 0` | after the above | cursor back on `sample.go:13`, sign back to `▶`; `DebugFrameDown` again → notify `already at the innermost frame` |
 | `DebugFrame 99` | halted | notify `no frame #99 (stack is N deep)` |
 | any `DebugContinue`/`Next`/`Step`/`StepOut` | after navigating frames | selected frame resets to 0 (sign back to `▶` at the new stop) |
+| `DebugGoroutines` | halted (break at `sample_test.go:60` in a `TestManyMixed` subtest) | popup lists several goroutines (`file:line:  goroutine N  [status]  func`); the subtest's is `[running]` and marked `<- current`, the parent `TestManyMixed` one is `[waiting]` on `testing.(*T).Run` |
+| `DebugGoroutine <id>` (a `[waiting]` one from the list) | after the above | notify `switched to goroutine <id> (...)`; sign moves to that goroutine's location; a following `DebugStack` shows that goroutine's stack |
+| `DebugGoroutine 999999` | halted | notify `switch to goroutine 999999: unknown goroutine 999999` |
 | `DebugStop` | mid-session | `debug session stopped`; signs cleared; `pgrep dlv` shows nothing left |
 | any `Debug*` | no session | notify `no debug session — start with :Ardango DebugCurrTest` |
 | `DebugCurrTest` | cursor not inside a `Test*` fn | notify `no Test function under the cursor` |
