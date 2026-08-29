@@ -228,17 +228,22 @@ end
 -- are session controls (no cursor context needed).
 
 -- Starts a Delve session on the Test* function under the cursor and stops
--- at its first line. Drive it with DebugContinue/DebugNext/DebugStep/
--- DebugStepOut, set stops with DebugBreakpoint, end it with DebugStop.
+-- on its first line (an entry breakpoint). Drive it with DebugContinue/
+-- DebugNext/DebugStep/DebugStepOut, set more stops with DebugBreakpoint,
+-- end it with DebugStop.
 M.DebugCurrTest = function()
   local current_dir = vim.fn.expand('%:p:h')
+  local file = vim.fn.expand('%:p')
   local cursor = api.nvim_win_get_cursor(0)
   local bufnr = api.nvim_get_current_buf()
   local root = get_root(bufnr)
 
   for _, node in test_query:iter_captures(root, bufnr, 0, -1) do
     if vim.treesitter.is_in_node_range(node:parent(), cursor[1] - 1, cursor[2]) then
-      dbg.start({ mode = "test", dir = current_dir, run = vim.treesitter.get_node_text(node, bufnr) })
+      dbg.start({
+        mode = "test", dir = current_dir, run = vim.treesitter.get_node_text(node, bufnr),
+        entry = { file = file, line = ({ node:parent():range() })[1] + 1 },
+      })
       return
     end
   end
@@ -246,16 +251,21 @@ M.DebugCurrTest = function()
 end
 
 -- Starts a Delve session on the Benchmark* function under the cursor
--- (dlv test -- -test.bench ^Name$ -test.run ^$ -test.benchmem).
+-- (dlv test -- -test.bench ^Name$ -test.run ^$ -test.benchmem), stopping
+-- on its first line.
 M.DebugCurrBenchmark = function()
   local current_dir = vim.fn.expand('%:p:h')
+  local file = vim.fn.expand('%:p')
   local cursor = api.nvim_win_get_cursor(0)
   local bufnr = api.nvim_get_current_buf()
   local root = get_root(bufnr)
 
   for _, node in bench_query:iter_captures(root, bufnr, 0, -1) do
     if vim.treesitter.is_in_node_range(node:parent(), cursor[1] - 1, cursor[2]) then
-      dbg.start({ mode = "bench", dir = current_dir, bench = vim.treesitter.get_node_text(node, bufnr) })
+      dbg.start({
+        mode = "bench", dir = current_dir, bench = vim.treesitter.get_node_text(node, bufnr),
+        entry = { file = file, line = ({ node:parent():range() })[1] + 1 },
+      })
       return
     end
   end
@@ -606,13 +616,14 @@ vim.api.nvim_create_user_command("Ardango", function(cmd_opts)
     return
   end
 
-  -- DebugFrame takes a frame number, DebugGoroutine a goroutine id.
+  -- DebugFrame takes a frame number, DebugGoroutine a goroutine id
+  -- (validated by the functions themselves).
   if name == "DebugFrame" then
-    M.DebugFrame(tonumber(rest[1]))
+    M.DebugFrame(rest[1])
     return
   end
   if name == "DebugGoroutine" then
-    M.DebugGoroutine(tonumber(rest[1]))
+    M.DebugGoroutine(rest[1])
     return
   end
 

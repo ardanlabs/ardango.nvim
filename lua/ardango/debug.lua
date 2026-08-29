@@ -70,8 +70,18 @@ local function bpkey(file, line)
   return file .. "\0" .. line
 end
 
+-- Shortens a path for display: relative to cwd/$HOME when it's under one,
+-- otherwise just the basename (stdlib / module-cache frames are usually
+-- outside both and their full path swamps a popup line).
 local function short(path)
-  return vim.fn.fnamemodify(path, ":~:.")
+  if not path or path == "" then
+    return "?"
+  end
+  local s = vim.fn.fnamemodify(path, ":~:.")
+  if s:sub(1, 1) == "/" then
+    return vim.fn.fnamemodify(path, ":t")
+  end
+  return s
 end
 
 local function clear_position_sign()
@@ -97,6 +107,10 @@ local function finish(s)
   end
   if s.dlv_job then
     pcall(vim.fn.jobstop, s.dlv_job)
+  end
+  if s.dlv_bin then
+    -- dlv usually removes its own --output binary; clean up if it was killed.
+    vim.defer_fn(function() pcall(vim.fn.delete, s.dlv_bin) end, 500)
   end
   if session == s then
     session = nil
@@ -125,7 +139,9 @@ local function send(s, req, cb)
   if cb then
     s.pending[id] = cb
   end
-  vim.fn.chansend(s.helper_job, vim.json.encode(req) .. "\n")
+  -- pcall: the helper job may have just died (its on_exit is scheduled,
+  -- not synchronous), and chansend on a closed channel throws.
+  pcall(vim.fn.chansend, s.helper_job, vim.json.encode(req) .. "\n")
   return id
 end
 
@@ -238,14 +254,27 @@ local function open_at(file, line)
   return api.nvim_get_current_buf()
 end
 
--- Jumps to file:line and puts the ▶ position sign there.
+-- Delve reports every next/step/stepout stop as "next finished" - useless
+-- to show. Only surface a reason when it tells the user something.
+local INTERESTING_REASON = {
+  breakpoint = true,
+  ["hardcoded breakpoint"] = true,
+  panic = true,
+  ["fatal error"] = true,
+  ["manual stop"] = true,
+  ["goroutine switch"] = true,
+}
+
+-- Jumps to file:line and puts the ▶ position sign there. Clears the old
+-- position/frame sign even when the source can't be opened, so a stale ▶
+-- never lingers at a location execution has left.
 local function place_stop_sign(file, line)
+  clear_position_sign()
   if not file or file == "" then
     return
   end
   local bufnr = open_at(file, line)
   if bufnr then
-    clear_position_sign()
     vim.fn.sign_place(POS_SIGN_ID, SIGN_GROUP, POS_SIGN, bufnr, { lnum = line, priority = 20 })
   end
 end
@@ -255,7 +284,16 @@ local function show_stop(s, st)
   s.frame = 0
   s.frames = nil
 
+  -- The one-shot entry breakpoint has done its job.
+  local was_entry = s.entry_bp ~= nil
+  if s.entry_bp then
+    local eb = s.entry_bp
+    s.entry_bp = nil
+    send(s, { op = "clearbreak", file = eb.file, line = eb.line }, function() end)
+  end
+
   if not st.file or st.file == "" then
+    clear_position_sign()
     vim.notify("ardango: stopped (" .. (st.reason or "?") .. "), no source location",
       vim.log.levels.WARN)
     return
@@ -266,14 +304,22 @@ local function show_stop(s, st)
   flush_pending_clears(s)
   sync_breakpoints(s)
 
+  local reason
+  if was_entry then
+    reason = "entry, "
+  else
+    reason = (st.reason and INTERESTING_REASON[st.reason]) and (st.reason .. ", ") or ""
+  end
   local where = st["function"] and (" in " .. st["function"]) or ""
-  vim.notify(string.format("ardango: stopped at %s:%d (%s, goroutine %d)%s",
-    short(st.file), st.line, st.reason or "?", st.goroutine or 0, where), vim.log.levels.INFO)
+  vim.notify(string.format("ardango: stopped at %s:%d (%sgoroutine %d)%s",
+    short(st.file), st.line, reason, st.goroutine or 0, where), vim.log.levels.INFO)
 end
 
 -- --------------------------------------------------------------------------
 -- session lifecycle
 -- --------------------------------------------------------------------------
+
+local run_cmd -- defined in "run control" below; used for the entry stop
 
 local function connect_helper(s)
   s.helper_job = vim.fn.jobstart({ HELPER }, {
@@ -311,7 +357,24 @@ local function connect_helper(s)
     s.ready = true
     flush_pending_clears(s)
     sync_breakpoints(s)
-    vim.notify("ardango: debug session ready — :Ardango DebugContinue", vim.log.levels.INFO)
+
+    if s.entry then
+      -- Land on the first line of the debugged function, the way an IDE
+      -- "debug this test" does. A temporary breakpoint, cleared on the
+      -- first stop (see show_stop).
+      send(s, { op = "break", file = s.entry.file, line = s.entry.line }, function(bp)
+        if not bp.ok then
+          vim.notify("ardango: couldn't set the entry breakpoint (" .. (bp.error or "?") ..
+            ") — set one yourself, then :Ardango DebugContinue", vim.log.levels.WARN)
+          return
+        end
+        s.entry_bp = { file = s.entry.file, line = s.entry.line }
+        run_cmd("continue")
+      end)
+    else
+      vim.notify("ardango: debug session ready — set a breakpoint " ..
+        "(:Ardango DebugBreakpoint), then :Ardango DebugContinue", vim.log.levels.INFO)
+    end
   end)
 end
 
@@ -411,13 +474,18 @@ start_session = function(spec)
     M.stop()
   end
 
-  local s = { next_id = 1, pending = {}, pending_clears = {}, frame = 0 }
+  local s = { next_id = 1, pending = {}, pending_clears = {}, frame = 0, entry = spec.entry }
   session = s
 
   local wd = (spec.dir and spec.dir ~= "") and spec.dir or vim.fn.getcwd()
+  -- --output puts the compiled debug binary in a tempdir instead of the
+  -- package dir, so a hard-killed dlv can't leave a debug.test* turd in
+  -- the user's tree.
+  s.dlv_bin = vim.fn.tempname()
   local cmd = {
     "dlv", spec.mode == "package" and "debug" or "test", ".",
     "--headless", "--listen=127.0.0.1:0", "--api-version=2", "--accept-multiclient",
+    "--output", s.dlv_bin,
   }
   local dlv_args = config.options.debug and config.options.debug.dlv_args
   vim.list_extend(cmd, type(dlv_args) == "table" and dlv_args or {})
@@ -476,7 +544,7 @@ end
 
 function M.stop()
   if not session then
-    vim.notify("ardango: no debug session", vim.log.levels.INFO)
+    vim.notify("ardango: no debug session to stop", vim.log.levels.INFO)
     return
   end
   local s = session
@@ -513,7 +581,7 @@ end
 -- true forever. `continue` gets no timeout.
 local STEP_TIMEOUT_MS = 30000
 
-local function run_cmd(op)
+run_cmd = function(op)
   local s = session
   if not s or not s.ready then
     vim.notify("ardango: no debug session — start with :Ardango DebugCurrTest", vim.log.levels.WARN)
@@ -534,7 +602,14 @@ local function run_cmd(op)
     settled = true
     s.running = false
     if not resp.ok then
-      vim.notify("ardango: " .. op .. " failed: " .. (resp.error or "?"), vim.log.levels.ERROR)
+      local err = resp.error or "?"
+      -- Stepping off the top of the stack is a boundary, not a failure.
+      if op == "stepout" and err:find("nothing to stepout to", 1, true) then
+        vim.notify("ardango: at the top of the call stack — nothing to step out to",
+          vim.log.levels.INFO)
+      else
+        vim.notify("ardango: " .. op .. " failed: " .. err, vim.log.levels.ERROR)
+      end
       return
     end
     if resp.terminated then
@@ -626,7 +701,10 @@ end
 -- unmounted by) the shared test/build results popup.
 local inspect_popup_state = { bufnr = nil, popup = nil }
 
--- DebugLocals: the current frame's args + locals, in a popup.
+-- DebugLocals: the current frame's args + locals, in a popup. Each value
+-- is capped for the list view - DebugEval <name> shows the full thing.
+local LOCALS_LINE_CAP = 200
+
 function M.locals()
   local s = session
   if not inspect_ok(s) then
@@ -637,7 +715,13 @@ function M.locals()
       vim.notify("ardango: locals: " .. (resp.error or "?"), vim.log.levels.WARN)
       return
     end
-    ui.show_popup(resp.lines or { "(no variables in scope)" }, vim.fn.getcwd(), inspect_popup_state)
+    local lines = resp.lines or { "(no variables in scope)" }
+    for i, l in ipairs(lines) do
+      if #l > LOCALS_LINE_CAP then
+        lines[i] = l:sub(1, LOCALS_LINE_CAP) .. " …"
+      end
+    end
+    ui.show_popup(lines, vim.fn.getcwd(), inspect_popup_state)
   end)
 end
 
@@ -679,13 +763,13 @@ local function goto_frame(s, n)
   end
   local loc = (f.file ~= "" and f.file ~= nil) and (" (" .. short(f.file) .. ":" .. f.line .. ")")
       or " (no source)"
-  vim.notify(string.format("ardango: frame #%d: %s%s", n, f["function"] or "?", loc),
+  vim.notify(string.format("ardango: frame #%d/%d: %s%s", n, #s.frames - 1, f["function"] or "?", loc),
     vim.log.levels.INFO)
 end
 
 -- DebugStack: the current goroutine's call stack, in a popup. Frame lines
 -- lead with file:line so the popup's <CR> jumps to that source; the frame
--- DebugLocals/DebugEval currently use is marked "<- current".
+-- DebugLocals/DebugEval currently use is marked "←".
 function M.stack()
   local s = session
   if not inspect_ok(s) then
@@ -694,8 +778,8 @@ function M.stack()
   with_frames(s, function(frames)
     local lines = {}
     for i, f in ipairs(frames) do
-      lines[i] = string.format("%s:%d:  #%d  %s%s", f.file, f.line, i - 1, f["function"] or "?",
-        (i - 1 == s.frame) and "  <- current" or "")
+      lines[i] = string.format("%s:%d:  #%d  %s%s", short(f.file), f.line, i - 1,
+        f["function"] or "?", (i - 1 == s.frame) and "  ←" or "")
     end
     if #lines == 0 then
       lines = { "(empty stack)" }
@@ -739,12 +823,17 @@ function M.frame(n)
   if not inspect_ok(s) then
     return
   end
-  n = tonumber(n) or 0
+  local num = tonumber(n)
+  if not num or num ~= math.floor(num) then
+    vim.notify("ardango: DebugFrame needs a frame number (see :Ardango DebugStack)",
+      vim.log.levels.WARN)
+    return
+  end
   with_frames(s, function(frames)
-    if n >= 0 and n < #frames then
-      goto_frame(s, n)
+    if num >= 0 and num < #frames then
+      goto_frame(s, num)
     else
-      vim.notify("ardango: no frame #" .. n .. " (stack is " .. #frames .. " deep)",
+      vim.notify("ardango: no frame #" .. num .. " (stack is " .. #frames .. " deep)",
         vim.log.levels.WARN)
     end
   end)
@@ -754,9 +843,28 @@ end
 -- goroutines
 -- --------------------------------------------------------------------------
 
+-- Frames Delve reports for a parked goroutine start deep in the runtime
+-- scheduler; a user switching goroutines wants their own code. Returns
+-- the index of the first frame that's in a source file on disk and not
+-- part of the runtime/stdlib/test harness, or 0 if there's no such frame.
+local function first_user_frame(frames)
+  for i, f in ipairs(frames) do
+    local file = f.file
+    if file and file ~= ""
+        and not file:match("/src/runtime/")
+        and not file:match("/src/testing/")
+        and not file:match("/src/sync/")
+        and not file:match("_testmain%.go$")
+        and vim.fn.filereadable(file) == 1 then
+      return i - 1
+    end
+  end
+  return 0
+end
+
 -- DebugGoroutines: every goroutine with its user-code location, in a
 -- popup. Lines lead with file:line so <CR> jumps there; the selected one
--- is marked "<- current". Switch with :Ardango DebugGoroutine {id}.
+-- is marked "←". Switch with :Ardango DebugGoroutine {id}.
 function M.goroutines()
   local s = session
   if not inspect_ok(s) then
@@ -770,9 +878,13 @@ function M.goroutines()
     local gs = resp.goroutines or {}
     local lines = {}
     for i, g in ipairs(gs) do
-      local loc = (g.file ~= "" and g.file ~= nil) and (g.file .. ":" .. g.line .. ":") or "(no source):"
+      local loc = (g.file ~= "" and g.file ~= nil) and (short(g.file) .. ":" .. g.line .. ":")
+          or "(no source):"
       lines[i] = string.format("%s  goroutine %d  [%s]  %s%s", loc, g.id, g.status,
-        g["function"] or "?", g.current and "  <- current" or "")
+        g["function"] or "?", g.current and "  ←" or "")
+    end
+    if resp.truncated then
+      lines[#lines + 1] = "  … (more goroutines not shown)"
     end
     if #lines == 0 then
       lines = { "(no goroutines)" }
@@ -781,32 +893,33 @@ function M.goroutines()
   end)
 end
 
--- DebugGoroutine {id}: make goroutine {id} the selected one. Locals/eval/
--- stack then reflect it; the position sign moves to its location.
+-- DebugGoroutine {id}: make goroutine {id} the selected one, and land on
+-- its first user frame (not the runtime frame it's parked in). Locals/
+-- eval/stack then reflect it.
 function M.switch_goroutine(id)
   local s = session
   if not inspect_ok(s) then
     return
   end
-  id = tonumber(id)
-  if not id then
+  local gid = tonumber(id)
+  if not gid or gid ~= math.floor(gid) then
     vim.notify("ardango: DebugGoroutine needs a goroutine id (see :Ardango DebugGoroutines)",
       vim.log.levels.WARN)
     return
   end
-  send(s, { op = "switchgoroutine", goroutine = id }, function(resp)
+  send(s, { op = "switchgoroutine", goroutine = gid }, function(resp)
     if not resp.ok then
-      vim.notify("ardango: switch to goroutine " .. id .. ": " .. (resp.error or "?"),
+      vim.notify("ardango: switch to goroutine " .. gid .. ": " .. (resp.error or "?"),
         vim.log.levels.WARN)
       return
     end
     s.frame = 0
     s.frames = nil
-    local st = resp.stopped or {}
-    place_stop_sign(st.file, st.line)
-    local where = (st["function"] and st.file and st.file ~= "")
-        and (" (" .. st["function"] .. " " .. short(st.file) .. ":" .. (st.line or 0) .. ")") or ""
-    vim.notify("ardango: switched to goroutine " .. (st.goroutine or id) .. where, vim.log.levels.INFO)
+    vim.notify("ardango: switched to goroutine " .. (resp.stopped and resp.stopped.goroutine or gid),
+      vim.log.levels.INFO)
+    with_frames(s, function(frames)
+      goto_frame(s, first_user_frame(frames))
+    end)
   end)
 end
 

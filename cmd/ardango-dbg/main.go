@@ -74,14 +74,24 @@ type request struct {
 	Goroutine int64  `json:"goroutine"` // op "switchgoroutine"
 }
 
-// How much to load when evaluating an expression - generous enough for a
-// hover popup without pulling unbounded data.
+// How much to load when evaluating an explicit expression - generous
+// enough for a hover popup without pulling unbounded data.
 var evalLoadConfig = api.LoadConfig{
 	FollowPointers:     true,
 	MaxVariableRecurse: 2,
 	MaxStringLen:       512,
 	MaxArrayValues:     128,
 	MaxStructFields:    -1,
+}
+
+// Much shallower for the "list what's in scope" command - one line per
+// var, so a *testing.T mustn't expand to a 4KB line.
+var localsLoadConfig = api.LoadConfig{
+	FollowPointers:     true,
+	MaxVariableRecurse: 1,
+	MaxStringLen:       128,
+	MaxArrayValues:     16,
+	MaxStructFields:    10,
 }
 
 type bpInfo struct {
@@ -127,6 +137,7 @@ type response struct {
 	Lines      []string        `json:"lines,omitempty"`  // op "eval"/"locals": rendered text
 	Frames     []frameInfo     `json:"frames,omitempty"` // op "stack"
 	Goroutines []goroutineInfo `json:"goroutines,omitempty"`
+	Truncated  bool            `json:"truncated,omitempty"` // op "goroutines": more than the cap
 }
 
 type server struct {
@@ -326,38 +337,43 @@ func (s *server) listLocals(req request) {
 	}
 
 	scope := api.EvalScope{GoroutineID: -1, Frame: req.Frame}
-	args, err := client.ListFunctionArgs(scope, evalLoadConfig)
+	args, err := client.ListFunctionArgs(scope, localsLoadConfig)
 	if err != nil {
 		s.fail(req.ID, err)
 		return
 	}
-	locals, err := client.ListLocalVariables(scope, evalLoadConfig)
+	locals, err := client.ListLocalVariables(scope, localsLoadConfig)
 	if err != nil {
 		s.fail(req.ID, err)
 		return
 	}
 
+	// Delve lists a function's result slots (~r0, ~r1, ...) among its
+	// args. They're zero until the function returns, so before then they're
+	// noise; once stopped on/after the return they hold the actual return
+	// values - either way they belong under their own header, not "args".
+	var plainArgs, returns []api.Variable
+	for _, v := range args {
+		if strings.HasPrefix(v.Name, "~") {
+			returns = append(returns, v)
+		} else {
+			plainArgs = append(plainArgs, v)
+		}
+	}
+
 	var lines []string
 	section := func(header string, vars []api.Variable) {
-		var shown []api.Variable
-		for _, v := range vars {
-			// Delve lists a function's return slots (~r0, ~r1, ...) as
-			// args; they're just zero values until the function returns.
-			if strings.HasPrefix(v.Name, "~") {
-				continue
-			}
-			shown = append(shown, v)
-		}
-		if len(shown) == 0 {
+		if len(vars) == 0 {
 			return
 		}
 		lines = append(lines, header)
-		for _, v := range shown {
+		for _, v := range vars {
 			lines = append(lines, "  "+v.Name+" = "+v.SinglelineString())
 		}
 	}
-	section("-- args --", args)
+	section("-- args --", plainArgs)
 	section("-- locals --", locals)
+	section("-- returns --", returns)
 	if len(lines) == 0 {
 		lines = []string{"(no variables in scope)"}
 	}
@@ -401,28 +417,55 @@ func (s *server) stackTrace(req request) {
 	s.send(response{ID: req.ID, OK: true, Frames: out})
 }
 
+// Common runtime.waitReason values (runtime/runtime2.go). Not exhaustive -
+// unknowns fall back to the bare "waiting" status.
+var waitReasons = map[int64]string{
+	2:  "chan receive (nil chan)",
+	3:  "chan send (nil chan)",
+	7:  "GC sweep wait",
+	8:  "chan receive",
+	9:  "chan send",
+	11: "select",
+	14: "sync.Mutex.Lock",
+	15: "sync.WaitGroup.Wait",
+	16: "sync.Cond.Wait",
+	20: "IO wait",
+	22: "timer",
+	26: "sleep",
+	27: "sync.RWMutex.RLock",
+	28: "sync.RWMutex.Lock",
+}
+
 // Go runtime goroutine status (runtime/runtime2.go gStatus); api.Goroutine
-// exposes it as a raw number.
-func goroutineStatus(n uint64) string {
+// exposes it as a raw number, sometimes OR'd with _Gscan (0x1000).
+func goroutineStatus(n uint64, waitReason int64) string {
+	scanning := ""
+	if n&0x1000 != 0 {
+		scanning = " (scan)"
+		n &^= 0x1000
+	}
 	switch n {
 	case 0:
-		return "idle"
+		return "idle" + scanning
 	case 1:
-		return "runnable"
+		return "runnable" + scanning
 	case 2:
-		return "running"
+		return "running" + scanning
 	case 3:
-		return "syscall"
+		return "syscall" + scanning
 	case 4:
-		return "waiting"
+		if wr := waitReasons[waitReason]; wr != "" {
+			return wr + scanning
+		}
+		return "waiting" + scanning
 	case 6:
-		return "dead"
+		return "dead" + scanning
 	case 8:
-		return "copystack"
+		return "copystack" + scanning
 	case 9:
-		return "preempted"
+		return "preempted" + scanning
 	default:
-		return fmt.Sprintf("status %d", n)
+		return fmt.Sprintf("status %d%s", n, scanning)
 	}
 }
 
@@ -449,7 +492,8 @@ func (s *server) listGoroutines(req request) {
 		return
 	}
 
-	gs, _, err := client.ListGoroutines(0, 1000)
+	const limit = 500
+	gs, nextg, err := client.ListGoroutines(0, limit)
 	if err != nil {
 		s.fail(req.ID, err)
 		return
@@ -465,13 +509,14 @@ func (s *server) listGoroutines(req request) {
 		out = append(out, goroutineInfo{
 			ID:       g.ID,
 			Current:  g.ID == cur,
-			Status:   goroutineStatus(g.Status),
+			Status:   goroutineStatus(g.Status, g.WaitReason),
 			Function: locFunc(g.UserCurrentLoc),
 			File:     g.UserCurrentLoc.File,
 			Line:     g.UserCurrentLoc.Line,
 		})
 	}
-	s.send(response{ID: req.ID, OK: true, Goroutines: out})
+	// nextg != 0 means ListGoroutines had more to give past the limit.
+	s.send(response{ID: req.ID, OK: true, Goroutines: out, Truncated: nextg != 0})
 }
 
 // switchGoroutine makes req.Goroutine the selected goroutine; the response
@@ -599,7 +644,7 @@ func main() {
 	}
 
 	sc := bufio.NewScanner(os.Stdin)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(line) == 0 {
@@ -620,6 +665,16 @@ func main() {
 	s.stopping = true
 	c := s.client
 	s.mu.Unlock()
+	// Let an in-flight run goroutine unwind first, as the "stop" op does.
+	for i := 0; i < 200; i++ {
+		s.mu.Lock()
+		busy := s.busy
+		s.mu.Unlock()
+		if !busy {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if c != nil {
 		done := make(chan struct{})
 		go func() { _ = c.Detach(true); close(done) }()
