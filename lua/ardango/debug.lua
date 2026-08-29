@@ -34,13 +34,16 @@ local HELPER_DIR = vim.fn.stdpath("cache") .. "/ardango"
 local HELPER = HELPER_DIR .. "/ardango-dbg"
 
 local SIGN_GROUP = "ardango_dbg"
-local POS_SIGN = "ardango_dbg_pos"
+local POS_SIGN = "ardango_dbg_pos"     -- execution stopped here (frame 0)
+local FRAME_SIGN = "ardango_dbg_frame" -- inspecting a caller frame (frame > 0)
 local BP_SIGN = "ardango_dbg_bp"
--- Fixed id for the single "stopped here" sign; well clear of the ids
--- sign_place() auto-allocates (from 1) for breakpoint signs.
+-- One fixed id for whichever of POS_SIGN/FRAME_SIGN is currently placed;
+-- well clear of the ids sign_place() auto-allocates (from 1) for
+-- breakpoint signs.
 local POS_SIGN_ID = 990001
 
 vim.fn.sign_define(POS_SIGN, { text = "▶", texthl = "DiagnosticWarn", linehl = "Visual" })
+vim.fn.sign_define(FRAME_SIGN, { text = "▷", texthl = "DiagnosticHint" })
 vim.fn.sign_define(BP_SIGN, { text = "●", texthl = "DiagnosticError" })
 
 -- Breakpoints persist across sessions (and can be toggled with no session
@@ -58,6 +61,9 @@ local breakpoints = {}
 --   next_id     - request id counter
 --   pending     - { [id] = function(response_table) }
 --   pending_clears - clearbreak ops deferred until the target next halts
+--   frame       - stack frame locals/eval operate in (0 = innermost)
+--   frames      - cached [{file,line,function}] for the current stop, or
+--                 nil (fetched lazily, invalidated on the next stop)
 local session = nil
 
 local function bpkey(file, line)
@@ -233,6 +239,10 @@ local function open_at(file, line)
 end
 
 local function show_stop(s, st)
+  -- A fresh stop invalidates any frame the user had navigated to.
+  s.frame = 0
+  s.frames = nil
+
   if not st.file or st.file == "" then
     vim.notify("ardango: stopped (" .. (st.reason or "?") .. "), no source location",
       vim.log.levels.WARN)
@@ -393,7 +403,7 @@ start_session = function(spec)
     M.stop()
   end
 
-  local s = { next_id = 1, pending = {}, pending_clears = {} }
+  local s = { next_id = 1, pending = {}, pending_clears = {}, frame = 0 }
   session = s
 
   local wd = (spec.dir and spec.dir ~= "") and spec.dir or vim.fn.getcwd()
@@ -586,7 +596,7 @@ function M.eval(expr)
     return
   end
 
-  send(s, { op = "eval", expr = expr, frame = 0 }, function(resp)
+  send(s, { op = "eval", expr = expr, frame = s.frame }, function(resp)
     if not resp.ok then
       vim.notify("ardango: eval " .. expr .. ": " .. (resp.error or "?"), vim.log.levels.WARN)
       return
@@ -614,7 +624,7 @@ function M.locals()
   if not inspect_ok(s) then
     return
   end
-  send(s, { op = "locals", frame = 0 }, function(resp)
+  send(s, { op = "locals", frame = s.frame }, function(resp)
     if not resp.ok then
       vim.notify("ardango: locals: " .. (resp.error or "?"), vim.log.levels.WARN)
       return
@@ -623,19 +633,112 @@ function M.locals()
   end)
 end
 
--- DebugStack: the current goroutine's call stack, in a popup. Lines lead
--- with file:line so the popup's <CR> jumps to the frame.
+-- --------------------------------------------------------------------------
+-- stack frames
+-- --------------------------------------------------------------------------
+
+-- Calls cb(frames) with the current stop's call stack, fetching it once
+-- and caching it on the session (show_stop clears s.frames on each stop).
+local function with_frames(s, cb)
+  if s.frames then
+    cb(s.frames)
+    return
+  end
+  send(s, { op = "stack", depth = 100 }, function(resp)
+    if not resp.ok then
+      vim.notify("ardango: stack: " .. (resp.error or "?"), vim.log.levels.WARN)
+      return
+    end
+    s.frames = resp.frames or {}
+    cb(s.frames)
+  end)
+end
+
+-- Moves the inspection frame to n: jumps the cursor there and swaps the
+-- position sign (▶ for frame 0, ▷ for a caller frame). Subsequent
+-- DebugLocals/DebugEval then operate in that frame.
+local function goto_frame(s, n)
+  local f = s.frames[n + 1]
+  if not f then
+    return
+  end
+  s.frame = n
+  local bufnr = (f.file ~= "" and f.file ~= nil) and open_at(f.file, f.line) or nil
+  clear_position_sign()
+  if bufnr then
+    vim.fn.sign_place(POS_SIGN_ID, SIGN_GROUP, n == 0 and POS_SIGN or FRAME_SIGN, bufnr,
+      { lnum = f.line, priority = 20 })
+  end
+  local loc = (f.file ~= "" and f.file ~= nil) and (" (" .. short(f.file) .. ":" .. f.line .. ")")
+      or " (no source)"
+  vim.notify(string.format("ardango: frame #%d: %s%s", n, f["function"] or "?", loc),
+    vim.log.levels.INFO)
+end
+
+-- DebugStack: the current goroutine's call stack, in a popup. Frame lines
+-- lead with file:line so the popup's <CR> jumps to that source; the frame
+-- DebugLocals/DebugEval currently use is marked "<- current".
 function M.stack()
   local s = session
   if not inspect_ok(s) then
     return
   end
-  send(s, { op = "stack", depth = 50 }, function(resp)
-    if not resp.ok then
-      vim.notify("ardango: stack: " .. (resp.error or "?"), vim.log.levels.WARN)
-      return
+  with_frames(s, function(frames)
+    local lines = {}
+    for i, f in ipairs(frames) do
+      lines[i] = string.format("%s:%d:  #%d  %s%s", f.file, f.line, i - 1, f["function"] or "?",
+        (i - 1 == s.frame) and "  <- current" or "")
     end
-    ui.show_popup(resp.lines or { "(empty stack)" }, vim.fn.getcwd(), inspect_popup_state)
+    if #lines == 0 then
+      lines = { "(empty stack)" }
+    end
+    ui.show_popup(lines, vim.fn.getcwd(), inspect_popup_state)
+  end)
+end
+
+-- DebugFrameUp/DebugFrameDown: move toward the caller / callee.
+function M.frame_up()
+  local s = session
+  if not inspect_ok(s) then
+    return
+  end
+  with_frames(s, function(frames)
+    if s.frame + 1 < #frames then
+      goto_frame(s, s.frame + 1)
+    else
+      vim.notify("ardango: already at the outermost frame", vim.log.levels.INFO)
+    end
+  end)
+end
+
+function M.frame_down()
+  local s = session
+  if not inspect_ok(s) then
+    return
+  end
+  with_frames(s, function()
+    if s.frame > 0 then
+      goto_frame(s, s.frame - 1)
+    else
+      vim.notify("ardango: already at the innermost frame", vim.log.levels.INFO)
+    end
+  end)
+end
+
+-- DebugFrame {n}: jump straight to frame n.
+function M.frame(n)
+  local s = session
+  if not inspect_ok(s) then
+    return
+  end
+  n = tonumber(n) or 0
+  with_frames(s, function(frames)
+    if n >= 0 and n < #frames then
+      goto_frame(s, n)
+    else
+      vim.notify("ardango: no frame #" .. n .. " (stack is " .. #frames .. " deep)",
+        vim.log.levels.WARN)
+    end
   end)
 end
 

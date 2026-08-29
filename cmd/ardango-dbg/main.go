@@ -101,14 +101,21 @@ type termInfo struct {
 	ExitStatus int `json:"exitStatus"`
 }
 
+type frameInfo struct {
+	File     string `json:"file"`
+	Line     int    `json:"line"`
+	Function string `json:"function"`
+}
+
 type response struct {
-	ID         int       `json:"id"`
-	OK         bool      `json:"ok"`
-	Error      string    `json:"error,omitempty"`
-	Breakpoint *bpInfo   `json:"breakpoint,omitempty"`
-	Stopped    *stopInfo `json:"stopped,omitempty"`
-	Terminated *termInfo `json:"terminated,omitempty"`
-	Lines      []string  `json:"lines,omitempty"` // op "eval"/"locals"/"stack": rendered text
+	ID         int         `json:"id"`
+	OK         bool        `json:"ok"`
+	Error      string      `json:"error,omitempty"`
+	Breakpoint *bpInfo     `json:"breakpoint,omitempty"`
+	Stopped    *stopInfo   `json:"stopped,omitempty"`
+	Terminated *termInfo   `json:"terminated,omitempty"`
+	Lines      []string    `json:"lines,omitempty"`  // op "eval"/"locals": rendered text
+	Frames     []frameInfo `json:"frames,omitempty"` // op "stack"
 }
 
 type server struct {
@@ -342,8 +349,8 @@ func (s *server) listLocals(req request) {
 	s.send(response{ID: req.ID, OK: true, Lines: lines})
 }
 
-// stackTrace renders the current goroutine's call stack. Lines lead with
-// "file:line" so Neovim's results popup can jump to a frame on <CR>.
+// stackTrace returns the current goroutine's call stack as structured
+// frames (Neovim formats + navigates them). Halted target only.
 func (s *server) stackTrace(req request) {
 	s.mu.Lock()
 	client := s.client
@@ -368,21 +375,15 @@ func (s *server) stackTrace(req request) {
 		return
 	}
 
-	lines := make([]string, 0, len(frames))
-	for i, f := range frames {
+	out := make([]frameInfo, 0, len(frames))
+	for _, f := range frames {
 		fn := "?"
 		if f.Function != nil {
 			fn = f.Function.Name()
 		}
-		// Trailing colon after the line number: Neovim's results-popup
-		// <CR> handler (ui.lua parse_line) matches "file.go:LINE:" and
-		// won't jump without it.
-		lines = append(lines, fmt.Sprintf("%s:%d:  #%d  %s", f.File, f.Line, i, fn))
+		out = append(out, frameInfo{File: f.File, Line: f.Line, Function: fn})
 	}
-	if len(lines) == 0 {
-		lines = []string{"(empty stack)"}
-	}
-	s.send(response{ID: req.ID, OK: true, Lines: lines})
+	s.send(response{ID: req.ID, OK: true, Frames: out})
 }
 
 func (s *server) run(req request) {

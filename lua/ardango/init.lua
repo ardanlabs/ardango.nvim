@@ -284,6 +284,13 @@ M.DebugEval = dbg.eval
 M.DebugLocals = dbg.locals
 M.DebugStack = dbg.stack
 
+-- DebugFrameUp/DebugFrameDown walk the call stack (caller/callee) and
+-- DebugFrame jumps to a numbered frame; DebugLocals/DebugEval then
+-- operate in the selected frame. Reset to frame 0 on the next stop.
+M.DebugFrameUp = dbg.frame_up
+M.DebugFrameDown = dbg.frame_down
+M.DebugFrame = dbg.frame
+
 -- OrgImports is a function to update imports of the current buffer.
 M.OrgBufImports = function(wait_ms)
   local params = vim.lsp.util.make_range_params()
@@ -554,7 +561,7 @@ local EX_COMMANDS = {
   "BuildCurrPackage", "RunLastTest", "CopyLastCmd",
   "DebugCurrTest", "DebugCurrBenchmark", "DebugPackage",
   "DebugBreakpoint", "DebugContinue", "DebugNext", "DebugStep", "DebugStepOut", "DebugStop",
-  "DebugEval", "DebugLocals", "DebugStack",
+  "DebugEval", "DebugLocals", "DebugStack", "DebugFrameUp", "DebugFrameDown", "DebugFrame",
   "AddTagToField", "AddTagsToStruct", "RemoveTagFromField", "RemoveTagsFromStruct",
   "AddTagToVisualFields", "RemoveTagFromVisualFields",
   "OrgBufImports", "SignatureInStatusLine",
@@ -593,6 +600,12 @@ vim.api.nvim_create_user_command("Ardango", function(cmd_opts)
     return
   end
 
+  -- DebugFrame takes a frame number.
+  if name == "DebugFrame" then
+    M.DebugFrame(tonumber(rest[1]))
+    return
+  end
+
   if WAIT_MS_COMMANDS[name] then
     local wait_ms = tonumber(rest[1]) or DEFAULT_WAIT_MS
     if name == "SignatureInStatusLine" and vim.tbl_contains(rest, "float") then
@@ -627,8 +640,8 @@ end, {
     for w in prefix:gmatch("%S+") do
       table.insert(prefix_words, w)
     end
-    -- DebugEval's argument is a free-text expression, not a flag.
-    if prefix_words[2] == "DebugEval" then
+    -- DebugEval / DebugFrame take a free-text expression / a number, not a flag.
+    if prefix_words[2] == "DebugEval" or prefix_words[2] == "DebugFrame" then
       return {}
     end
     local candidates = (#prefix_words <= 1) and EX_COMMANDS or BOOL_OPTS
