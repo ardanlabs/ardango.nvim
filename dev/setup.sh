@@ -45,5 +45,16 @@ fi
 # (but harmless) error on any hover containing a fenced code block.
 "$nvim" --clean --headless -u "$here/init.lua" -c "TSInstallSync! markdown markdown_inline" -c "qa"
 
+# Build the Delve proxy helper used by the Debug* commands (lua/ardango/debug.lua
+# spawns bin/ardango-dbg). Needs the Go toolchain; skipped with a warning if
+# `go` isn't on PATH (the Debug* commands then just error until it's built).
+root="$(cd "$here/.." && pwd)"
+if command -v go >/dev/null 2>&1; then
+  ( cd "$root" && go build -o bin/ardango-dbg ./cmd/ardango-dbg )
+  echo "built bin/ardango-dbg"
+else
+  echo "warning: 'go' not found - skipping bin/ardango-dbg build (needed for the Debug* commands)" >&2
+fi
+
 echo "dev environment ready. Try:"
 echo "  $nvim --clean -u dev/init.lua dev/testdata/sample_test.go"

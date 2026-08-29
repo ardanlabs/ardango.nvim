@@ -22,8 +22,16 @@ whatever `nvim` is on your `PATH` is reasonably recent — it warns
 `NVIM=/path/to/nvim` to target a specific binary instead of `PATH`.
 
 This clones `nui.nvim`, `nvim-treesitter`, `plenary.nvim`, and
-`telescope.nvim` into `dev/.deps/` (gitignored) and installs the Go
-treesitter parser via `TSInstallSync`. Safe to re-run.
+`telescope.nvim` into `dev/.deps/` (gitignored), installs the Go
+treesitter parser via `TSInstallSync`, and builds the Delve proxy helper
+(`bin/ardango-dbg`, gitignored) the `Debug*` commands drive. Safe to
+re-run.
+
+The devShell (`shell.nix`) provides `go` and `delve` (`dlv`) — the same
+Delve version the helper is built against — alongside Neovim, so nothing
+Go-related needs to be on the host `PATH`. Outside the devShell the
+helper build is skipped with a warning if `go` isn't found, and the
+`Debug*` commands additionally need `dlv` on `PATH` at runtime.
 
 `dev/setup.sh` pins `nvim-treesitter` to its **`master`** branch, not
 `main`. `main` is a rewrite that needs a much newer Neovim; `master` has
