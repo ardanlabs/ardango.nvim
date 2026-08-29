@@ -48,8 +48,9 @@ breakpoint sign in the gutter and the stop location marked and jumped to.
 - __DebugContinue__ / __DebugNext__ / __DebugStep__ / __DebugStepOut__: run / step over / step into / step out (only while halted).
 - __DebugBreakpoint__: toggle a breakpoint on the current line. Works with no session running; breakpoints persist across sessions.
 - __DebugEval__: show the value of an expression — the identifier under the cursor by default (`p`, `p.Name`, `xs[i]`), or `:Ardango DebugEval <expr>` — in a floating window, like an LSP hover.
-- __DebugLocals__: the current frame's args and locals, in a popup.
+- __DebugLocals__: the selected frame's args and locals, in a popup.
 - __DebugStack__: the goroutine's call stack, in a popup; `<CR>` on a frame jumps to it.
+- __DebugFrameUp__ / __DebugFrameDown__ / __DebugFrame `<n>`__: walk the call stack — the cursor and sign move to that frame (`▷` for a caller, `▶` for the innermost), and `DebugLocals`/`DebugEval` then evaluate there. Resets on the next step/continue.
 - __DebugStop__: end the session (also automatic on program exit / `:q`).
 
 All are reachable via `:Ardango Debug…` with tab completion. `dlv` must be
@@ -70,6 +71,8 @@ vim.keymap.set('n', '<leader>do', ardango.DebugStepOut, opts)
 vim.keymap.set('n', '<leader>de', ardango.DebugEval, opts)
 vim.keymap.set('n', '<leader>dl', ardango.DebugLocals, opts)
 vim.keymap.set('n', '<leader>dS', ardango.DebugStack, opts)
+vim.keymap.set('n', '<leader>d[', ardango.DebugFrameUp, opts)
+vim.keymap.set('n', '<leader>d]', ardango.DebugFrameDown, opts)
 vim.keymap.set('n', '<leader>dq', ardango.DebugStop, opts)
 ```
 

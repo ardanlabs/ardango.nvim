@@ -77,6 +77,8 @@ Example keymaps: >lua
     vim.keymap.set("n", "<leader>de", ardango.DebugEval, opts)
     vim.keymap.set("n", "<leader>dl", ardango.DebugLocals, opts)
     vim.keymap.set("n", "<leader>dS", ardango.DebugStack, opts)
+    vim.keymap.set("n", "<leader>d[", ardango.DebugFrameUp, opts)
+    vim.keymap.set("n", "<leader>d]", ardango.DebugFrameDown, opts)
     vim.keymap.set("n", "<leader>dq", ardango.DebugStop, opts)
 
     -- Update imports on save.
@@ -280,15 +282,32 @@ ardango.DebugEval({expr})                                    *ardango.DebugEval*
     <cexpr> under the cursor (`p`, `p.Name`, `xs[i]`, ...).
 
 ardango.DebugLocals()                                      *ardango.DebugLocals*
-    List the current frame's arguments and local variables in a popup.
+    List the selected frame's arguments and local variables in a popup.
 
 ardango.DebugStack()                                        *ardango.DebugStack*
     Show the current goroutine's call stack in a popup. Press <CR> on a
-    frame line to jump to its source.
+    frame line to jump to its source; the frame DebugLocals/DebugEval are
+    currently operating in is marked "<- current".
+
+Stack frames (only while the target is halted) ~
+
+ardango.DebugFrameUp()                                    *ardango.DebugFrameUp*
+ardango.DebugFrameDown()                                *ardango.DebugFrameDown*
+    Move the selected frame one step toward the caller / callee. The
+    cursor jumps to that frame's source and the position sign changes to
+    "▷" for any frame above the innermost ("▶"). |ardango.DebugLocals| and
+    |ardango.DebugEval| then evaluate in the selected frame.
+
+ardango.DebugFrame({n})                                      *ardango.DebugFrame*
+    Select frame {n} directly (0 = innermost).
+
+The selected frame resets to 0 on the next
+Continue/Next/Step/StepOut.
 
 All of these are also reachable via :Ardango, see |ardango-ex-command|.
 :Ardango DebugEval takes the rest of the line as the expression
-(:Ardango DebugEval p.Name); with none it uses the <cexpr>.
+(:Ardango DebugEval p.Name); with none it uses the <cexpr>. :Ardango
+DebugFrame takes the frame number (:Ardango DebugFrame 2).
 
 ==============================================================================
 6. Configuration                                          *ardango-configuration*

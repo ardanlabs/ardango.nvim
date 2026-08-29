@@ -85,7 +85,8 @@ the README recommends:
 - `<leader>trf` / `<leader>trs` — remove tag from field / struct
 - `<leader>d…` — the `Debug*` commands: `dt`/`dB`/`dP` start on
   test/benchmark/package, `db` toggle breakpoint, `dc`/`dn`/`ds`/`do`
-  continue/next/step/stepout, `de`/`dl`/`dS` eval/locals/stack, `dq` stop
+  continue/next/step/stepout, `de`/`dl`/`dS` eval/locals/stack,
+  `d[`/`d]` frame up/down, `dq` stop
 
 ## Fixtures (`dev/testdata/`)
 
@@ -153,7 +154,11 @@ pulls the Delve module and takes a bit). Run after any change to
 | `DebugEval` | halted, cursor on `p` in `sample.go` `Greet` | float: `ardango/dev/testdata.Person = testdata.Person {Name: "Ardan", ...}` |
 | `:Ardango DebugEval p.Name` | halted | float: `string = "Ardan"` |
 | `DebugLocals` | halted in `Greet` | popup: `-- args --` / `  p = ...` (no synthetic `~r0`) |
-| `DebugStack` | halted in `Greet` | popup: `sample.go:13:  #0  ...Greet` / `sample_test.go:8:  #1  ...TestGreetPass` / ...; `<CR>` on a frame line jumps to it |
+| `DebugStack` | halted in `Greet` | popup: `sample.go:13:  #0  ...Greet` / `sample_test.go:8:  #1  ...TestGreetPass` / ...; `#0` marked `<- current`; `<CR>` on a frame line jumps to it |
+| `DebugFrameUp` | halted in `Greet` | cursor jumps to `sample_test.go:8`, sign becomes `▷`; notify `frame #1: ...TestGreetPass (sample_test.go:8)`; a following `DebugLocals` shows `TestGreetPass`'s `t` |
+| `DebugFrameDown` (back to 0) / `DebugFrame 0` | after the above | cursor back on `sample.go:13`, sign back to `▶`; `DebugFrameDown` again → notify `already at the innermost frame` |
+| `DebugFrame 99` | halted | notify `no frame #99 (stack is N deep)` |
+| any `DebugContinue`/`Next`/`Step`/`StepOut` | after navigating frames | selected frame resets to 0 (sign back to `▶` at the new stop) |
 | `DebugStop` | mid-session | `debug session stopped`; signs cleared; `pgrep dlv` shows nothing left |
 | any `Debug*` | no session | notify `no debug session — start with :Ardango DebugCurrTest` |
 | `DebugCurrTest` | cursor not inside a `Test*` fn | notify `no Test function under the cursor` |
