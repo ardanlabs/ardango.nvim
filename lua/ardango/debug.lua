@@ -18,6 +18,8 @@
 -- an old session's teardown reach the new one.
 
 local api = vim.api
+local config = require('ardango.config')
+local ui = require('ardango.ui')
 
 local M = {}
 
@@ -452,6 +454,87 @@ function M.step_over() run_cmd("next") end
 function M.step_into() run_cmd("step") end
 
 function M.step_out() run_cmd("stepout") end
+
+-- --------------------------------------------------------------------------
+-- inspection (eval / locals / stack) - all halted-target only
+-- --------------------------------------------------------------------------
+
+local function inspect_ok(s)
+  if not s or not s.ready then
+    vim.notify("ardango: no debug session — start with :Ardango DebugCurrTest", vim.log.levels.WARN)
+    return false
+  end
+  if s.running then
+    vim.notify("ardango: debug target is still running", vim.log.levels.WARN)
+    return false
+  end
+  return true
+end
+
+-- Evaluates {expr} (default: the <cexpr> under the cursor - `p`, `p.Name`,
+-- `xs[i]`, ...) in the current stack frame and shows Delve's rendering of
+-- the value in a floating window, the way vim.lsp.buf.hover() shows hover
+-- text. Only works while the target is halted.
+function M.eval(expr)
+  local s = session
+  if not inspect_ok(s) then
+    return
+  end
+
+  expr = (expr and expr ~= "") and expr or vim.fn.expand("<cexpr>")
+  if expr == "" then
+    vim.notify("ardango: no expression under the cursor", vim.log.levels.WARN)
+    return
+  end
+
+  send(s, { op = "eval", expr = expr, frame = 0 }, function(resp)
+    if not resp.ok then
+      vim.notify("ardango: eval " .. expr .. ": " .. (resp.error or "?"), vim.log.levels.WARN)
+      return
+    end
+    local lines = resp.lines or {}
+    if #lines == 0 then
+      lines = { "(no value)" }
+    end
+    table.insert(lines, 1, expr)
+    vim.lsp.util.open_floating_preview(lines, "go", {
+      border = config.options.popup.border,
+      focus = false,
+      focusable = true,
+    })
+  end)
+end
+
+-- DebugLocals: the current frame's args + locals, in the results popup.
+function M.locals()
+  local s = session
+  if not inspect_ok(s) then
+    return
+  end
+  send(s, { op = "locals", frame = 0 }, function(resp)
+    if not resp.ok then
+      vim.notify("ardango: locals: " .. (resp.error or "?"), vim.log.levels.WARN)
+      return
+    end
+    ui.show_popup(resp.lines or { "(no variables in scope)" }, vim.fn.getcwd())
+  end)
+end
+
+-- DebugStack: the current goroutine's call stack, in the results popup.
+-- Lines lead with file:line so the popup's <CR> jumps to the frame.
+function M.stack()
+  local s = session
+  if not inspect_ok(s) then
+    return
+  end
+  send(s, { op = "stack", depth = 50 }, function(resp)
+    if not resp.ok then
+      vim.notify("ardango: stack: " .. (resp.error or "?"), vim.log.levels.WARN)
+      return
+    end
+    ui.show_popup(resp.lines or { "(empty stack)" }, vim.fn.getcwd())
+  end)
+end
 
 -- --------------------------------------------------------------------------
 -- breakpoints

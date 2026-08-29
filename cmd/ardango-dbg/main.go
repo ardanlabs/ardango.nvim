@@ -36,6 +36,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,11 +63,24 @@ func exitStatus(err error) (int, bool) {
 }
 
 type request struct {
-	ID   int    `json:"id"`
-	Op   string `json:"op"`
-	Addr string `json:"addr"`
-	File string `json:"file"`
-	Line int    `json:"line"`
+	ID    int    `json:"id"`
+	Op    string `json:"op"`
+	Addr  string `json:"addr"`
+	File  string `json:"file"`
+	Line  int    `json:"line"`
+	Expr  string `json:"expr"`  // op "eval"
+	Frame int    `json:"frame"` // op "eval"/"locals": stack frame, 0 = innermost
+	Depth int    `json:"depth"` // op "stack": max frames
+}
+
+// How much to load when evaluating an expression - generous enough for a
+// hover popup without pulling unbounded data.
+var evalLoadConfig = api.LoadConfig{
+	FollowPointers:     true,
+	MaxVariableRecurse: 2,
+	MaxStringLen:       512,
+	MaxArrayValues:     128,
+	MaxStructFields:    -1,
 }
 
 type bpInfo struct {
@@ -94,6 +108,7 @@ type response struct {
 	Breakpoint *bpInfo   `json:"breakpoint,omitempty"`
 	Stopped    *stopInfo `json:"stopped,omitempty"`
 	Terminated *termInfo `json:"terminated,omitempty"`
+	Lines      []string  `json:"lines,omitempty"` // op "eval"/"locals"/"stack": rendered text
 }
 
 type server struct {
@@ -131,6 +146,12 @@ func (s *server) handle(req request) {
 		s.clearBreak(req)
 	case "continue", "next", "step", "stepout":
 		s.run(req)
+	case "eval":
+		s.evalVar(req)
+	case "locals":
+		s.listLocals(req)
+	case "stack":
+		s.stackTrace(req)
 	case "stop":
 		s.mu.Lock()
 		s.stopping = true
@@ -219,6 +240,129 @@ func (s *server) clearBreak(req request) {
 	delete(s.bps, key(req.File, req.Line))
 	s.mu.Unlock()
 	s.send(response{ID: req.ID, OK: true})
+}
+
+// evalVar evaluates req.Expr in the given stack frame of the current
+// goroutine and returns Delve's own pretty-printed rendering as lines.
+// Only valid on a halted target.
+func (s *server) evalVar(req request) {
+	s.mu.Lock()
+	client := s.client
+	busy := s.busy
+	s.mu.Unlock()
+	if client == nil {
+		s.fail(req.ID, fmt.Errorf("not connected"))
+		return
+	}
+	if busy {
+		s.fail(req.ID, fmt.Errorf("target is running"))
+		return
+	}
+
+	scope := api.EvalScope{GoroutineID: -1, Frame: req.Frame}
+	v, err := client.EvalVariable(scope, req.Expr, evalLoadConfig)
+	if err != nil {
+		s.fail(req.ID, err)
+		return
+	}
+
+	rendered := v.StringWithOptions("    ", "", api.PrettyNewlines|api.PrettyShortenType)
+	valueLines := strings.Split(strings.TrimRight(rendered, "\n"), "\n")
+
+	var lines []string
+	if len(valueLines) == 1 {
+		// Scalar / compact value - keep it on one line, LSP-hover style.
+		lines = []string{v.Type + " = " + valueLines[0]}
+	} else {
+		lines = append([]string{v.Type + " ="}, valueLines...)
+	}
+	s.send(response{ID: req.ID, OK: true, Lines: lines})
+}
+
+// listLocals renders the given frame's function arguments and local
+// variables as "name = value" lines. Halted target only.
+func (s *server) listLocals(req request) {
+	s.mu.Lock()
+	client := s.client
+	busy := s.busy
+	s.mu.Unlock()
+	if client == nil {
+		s.fail(req.ID, fmt.Errorf("not connected"))
+		return
+	}
+	if busy {
+		s.fail(req.ID, fmt.Errorf("target is running"))
+		return
+	}
+
+	scope := api.EvalScope{GoroutineID: -1, Frame: req.Frame}
+	args, err := client.ListFunctionArgs(scope, evalLoadConfig)
+	if err != nil {
+		s.fail(req.ID, err)
+		return
+	}
+	locals, err := client.ListLocalVariables(scope, evalLoadConfig)
+	if err != nil {
+		s.fail(req.ID, err)
+		return
+	}
+
+	var lines []string
+	section := func(header string, vars []api.Variable) {
+		if len(vars) == 0 {
+			return
+		}
+		lines = append(lines, header)
+		for _, v := range vars {
+			lines = append(lines, "  "+v.Name+" = "+v.SinglelineString())
+		}
+	}
+	section("-- args --", args)
+	section("-- locals --", locals)
+	if len(lines) == 0 {
+		lines = []string{"(no variables in scope)"}
+	}
+	s.send(response{ID: req.ID, OK: true, Lines: lines})
+}
+
+// stackTrace renders the current goroutine's call stack. Lines lead with
+// "file:line" so Neovim's results popup can jump to a frame on <CR>.
+func (s *server) stackTrace(req request) {
+	s.mu.Lock()
+	client := s.client
+	busy := s.busy
+	s.mu.Unlock()
+	if client == nil {
+		s.fail(req.ID, fmt.Errorf("not connected"))
+		return
+	}
+	if busy {
+		s.fail(req.ID, fmt.Errorf("target is running"))
+		return
+	}
+
+	depth := req.Depth
+	if depth <= 0 {
+		depth = 50
+	}
+	frames, err := client.Stacktrace(-1, depth, 0, 0, &evalLoadConfig)
+	if err != nil {
+		s.fail(req.ID, err)
+		return
+	}
+
+	lines := make([]string, 0, len(frames))
+	for i, f := range frames {
+		fn := "?"
+		if f.Function != nil {
+			fn = f.Function.Name()
+		}
+		lines = append(lines, fmt.Sprintf("%s:%d  #%d  %s", f.File, f.Line, i, fn))
+	}
+	if len(lines) == 0 {
+		lines = []string{"(empty stack)"}
+	}
+	s.send(response{ID: req.ID, OK: true, Lines: lines})
 }
 
 func (s *server) run(req request) {

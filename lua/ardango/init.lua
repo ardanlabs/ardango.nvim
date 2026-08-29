@@ -274,6 +274,16 @@ M.DebugStepOut = dbg.step_out
 M.DebugBreakpoint = dbg.toggle_breakpoint
 M.DebugStop = dbg.stop
 
+-- Shows the value of {expr} (or the expression under the cursor) in a
+-- floating window, like an LSP hover. Halted target only.
+M.DebugEval = dbg.eval
+
+-- DebugLocals lists the current frame's args + local variables in the
+-- results popup; DebugStack shows the goroutine's call stack there (press
+-- <CR> on a frame line to jump to it). Halted target only.
+M.DebugLocals = dbg.locals
+M.DebugStack = dbg.stack
+
 -- OrgImports is a function to update imports of the current buffer.
 M.OrgBufImports = function(wait_ms)
   local params = vim.lsp.util.make_range_params()
@@ -544,6 +554,7 @@ local EX_COMMANDS = {
   "BuildCurrPackage", "RunLastTest", "CopyLastCmd",
   "DebugCurrTest", "DebugCurrBenchmark", "DebugPackage",
   "DebugBreakpoint", "DebugContinue", "DebugNext", "DebugStep", "DebugStepOut", "DebugStop",
+  "DebugEval", "DebugLocals", "DebugStack",
   "AddTagToField", "AddTagsToStruct", "RemoveTagFromField", "RemoveTagsFromStruct",
   "AddTagToVisualFields", "RemoveTagFromVisualFields",
   "OrgBufImports", "SignatureInStatusLine",
@@ -574,6 +585,13 @@ vim.api.nvim_create_user_command("Ardango", function(cmd_opts)
   end
 
   local rest = { unpack(cmd_opts.fargs, 2) }
+
+  -- DebugEval takes a free-text expression (the rest of the line); with
+  -- none, it falls back to the <cexpr> under the cursor.
+  if name == "DebugEval" then
+    M.DebugEval(table.concat(rest, " "))
+    return
+  end
 
   if WAIT_MS_COMMANDS[name] then
     local wait_ms = tonumber(rest[1]) or DEFAULT_WAIT_MS
