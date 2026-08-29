@@ -7,8 +7,9 @@ CONTENTS                                                     *ardango-contents*
     2. Setup ................................... |ardango-setup|
     3. Commands ................................. |ardango-commands|
     4. Ex command ................................ |ardango-ex-command|
-    5. Configuration .............................. |ardango-configuration|
-    6. Health ..................................... |ardango-health|
+    5. Debugging (Delve) ......................... |ardango-debug|
+    6. Configuration .............................. |ardango-configuration|
+    7. Health ..................................... |ardango-health|
 
 ==============================================================================
 1. Introduction                                          *ardango-introduction*
@@ -16,7 +17,8 @@ CONTENTS                                                     *ardango-contents*
 
 ardango.nvim exposes utility functions to enhance coding Go in Neovim:
 running/building via the go toolchain, organizing imports, editing struct
-tags, and showing hover info in the statusline.
+tags, showing hover info in the statusline, and driving a Delve debug
+session (see |ardango-debug|).
 
 Dependencies ~
     - nvim-treesitter (with the Go parser installed)
@@ -63,6 +65,19 @@ Example keymaps: >lua
       "<Esc>:lua require('ardango').AddTagToVisualFields()<CR>", { buffer = 0 })
     vim.keymap.set("x", "<leader>trvf",
       "<Esc>:lua require('ardango').RemoveTagFromVisualFields()<CR>", { buffer = 0 })
+
+    -- Debugging (Delve) - see |ardango-debug|.
+    vim.keymap.set("n", "<leader>dt", ardango.DebugCurrTest, opts)
+    vim.keymap.set("n", "<leader>dP", ardango.DebugPackage, opts)
+    vim.keymap.set("n", "<leader>db", ardango.DebugBreakpoint, opts)
+    vim.keymap.set("n", "<leader>dc", ardango.DebugContinue, opts)
+    vim.keymap.set("n", "<leader>dn", ardango.DebugNext, opts)
+    vim.keymap.set("n", "<leader>ds", ardango.DebugStep, opts)
+    vim.keymap.set("n", "<leader>do", ardango.DebugStepOut, opts)
+    vim.keymap.set("n", "<leader>de", ardango.DebugEval, opts)
+    vim.keymap.set("n", "<leader>dl", ardango.DebugLocals, opts)
+    vim.keymap.set("n", "<leader>dS", ardango.DebugStack, opts)
+    vim.keymap.set("n", "<leader>dq", ardango.DebugStop, opts)
 
     -- Update imports on save.
     vim.api.nvim_create_autocmd("BufWritePre", {
@@ -204,7 +219,78 @@ if omitted). Examples: >vim
     :Ardango SignatureInStatusLine 500 float
 <
 ==============================================================================
-5. Configuration                                          *ardango-configuration*
+5. Debugging (Delve)                                             *ardango-debug*
+
+Drive a Delve debug session on the current buffer's package without
+leaving Neovim. One session runs at a time. A breakpoint sign (default
+"●") marks lines you've toggled; the current stop location gets a "▶"
+sign and the cursor jumps there.
+
+Requirements ~
+    - dlv (Delve) on PATH - https://github.com/go-delve/delve
+    - the Go toolchain (`go`) - a small helper (cmd/ardango-dbg) is built
+      automatically into stdpath("cache")/ardango/ on the first Debug*
+      command, and rebuilt when it goes stale. dev/setup.sh pre-builds it.
+
+Starting a session ~
+
+ardango.DebugCurrTest()                                  *ardango.DebugCurrTest*
+    Builds and debugs the Test* function under the cursor (dlv test),
+    stopping at its entry. Drive it with the stepping commands below.
+
+ardango.DebugCurrBenchmark()                        *ardango.DebugCurrBenchmark*
+    Same for the Benchmark* function under the cursor
+    (dlv test -- -test.bench ^Name$ -test.run ^$ -test.benchmem).
+
+ardango.DebugPackage()                                    *ardango.DebugPackage*
+    Debugs the current buffer's package as a program (dlv debug).
+
+ardango.DebugStop()                                          *ardango.DebugStop*
+    Ends the session: detaches and kills the debuggee, clears the signs.
+    Also runs automatically when the program exits and on VimLeavePre.
+
+Stepping (only while the target is halted) ~
+
+ardango.DebugContinue()                                  *ardango.DebugContinue*
+    Run until the next breakpoint or program exit.
+
+ardango.DebugNext()                                          *ardango.DebugNext*
+    Step over the current line.
+
+ardango.DebugStep()                                          *ardango.DebugStep*
+    Step into a call on the current line.
+
+ardango.DebugStepOut()                                    *ardango.DebugStepOut*
+    Run until the current function returns.
+
+Breakpoints ~
+
+ardango.DebugBreakpoint()                              *ardango.DebugBreakpoint*
+    Toggle a breakpoint on the current line. Works with no session
+    running (breakpoints persist across sessions and are re-applied on
+    the next start); toggling one while the target is running takes
+    effect at the next stop.
+
+Inspecting state (only while the target is halted) ~
+
+ardango.DebugEval({expr})                                    *ardango.DebugEval*
+    Evaluate {expr} in the current frame and show the value in a floating
+    window, like |vim.lsp.buf.hover()|. With no {expr}, evaluates the
+    <cexpr> under the cursor (`p`, `p.Name`, `xs[i]`, ...).
+
+ardango.DebugLocals()                                      *ardango.DebugLocals*
+    List the current frame's arguments and local variables in a popup.
+
+ardango.DebugStack()                                        *ardango.DebugStack*
+    Show the current goroutine's call stack in a popup. Press <CR> on a
+    frame line to jump to its source.
+
+All of these are also reachable via :Ardango, see |ardango-ex-command|.
+:Ardango DebugEval takes the rest of the line as the expression
+(:Ardango DebugEval p.Name); with none it uses the <cexpr>.
+
+==============================================================================
+6. Configuration                                          *ardango-configuration*
 
 ardango.setup({opts})                                          *ardango.setup*
     Overrides plugin-wide config. Optional - everything works with its
@@ -217,6 +303,9 @@ ardango.setup({opts})                                          *ardango.setup*
             position = "50%",     -- default: 0
           },
           tag_options = { "omitempty", "-", "required", "unique", "index" },
+          debug = {
+            dlv_args = { "--build-flags=-tags=integration" },  -- default: {}
+          },
         })
 <
     popup fields are passed straight through to nui.Popup (|nui.popup|),
@@ -229,12 +318,16 @@ ardango.setup({opts})                                          *ardango.setup*
     Passing it *replaces* the default list entirely, rather than merging
     with it.
 
+    debug.dlv_args is a list of extra flags inserted into the dlv test /
+    dlv debug command line (before the -- test-args separator) by the
+    Debug* commands - e.g. build tags. Also replaces, not merges.
+
 ==============================================================================
-6. Health                                                        *ardango-health*
+7. Health                                                        *ardango-health*
 
 Run :checkhealth ardango to verify the go binary and the Go treesitter
 parser are available (both required), nui.nvim is installed (required
-for the default results popup), and whether telescope.nvim and gofmt
-are installed (both optional).
+for the default results popup), and whether telescope.nvim, gofmt, dlv
+(Delve), and the built debug helper are present (all optional).
 
 vim:tw=78:ts=8:noet:ft=help:norl:

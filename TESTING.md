@@ -83,6 +83,9 @@ the README recommends:
 - `<leader>gr` — `RunLastTest`
 - `<leader>taf` / `<leader>tas` — add tag to field / struct
 - `<leader>trf` / `<leader>trs` — remove tag from field / struct
+- `<leader>d…` — the `Debug*` commands: `dt` start on test, `db` toggle
+  breakpoint, `dc`/`dn`/`ds`/`do` continue/next/step/stepout, `de`/`dl`/`dS`
+  eval/locals/stack, `dq` stop
 
 ## Fixtures (`dev/testdata/`)
 
@@ -133,6 +136,35 @@ or `lua/ardango/struct_tag.lua`:
 | `RemoveTagsFromStruct` / `RemoveTagFromField` | struct/field with tags already present | removes the named tag element (or the whole tag, if no name given) |
 | `SignatureInStatusLine(wait_ms)` | cursor on an identifier, LSP client attached (`dev/init.lua` doesn't wire one up - either attach `gopls` yourself or stub `vim.lsp.buf_request_sync`, see below) | one-line `vim.notify` with the hover's second line |
 | `SignatureInStatusLine(wait_ms, { float = true })` | same | floating window with the full hover content, via `vim.lsp.util.open_floating_preview` (same as `vim.lsp.buf.hover()`) |
+
+### Debugging (Delve) — `lua/ardango/debug.lua`, `cmd/ardango-dbg/`
+
+Needs `dlv` on `PATH` and the helper built (`dev/setup.sh` pre-builds it
+into `stdpath("cache")/ardango/ardango-dbg`; otherwise the first `Debug*`
+call builds it — `go build ./cmd/ardango-dbg` — which on a cold machine
+pulls the Delve module and takes a bit). Run after any change to
+`debug.lua`, `cmd/ardango-dbg/main.go`, or `ui.lua`'s `show_popup`.
+
+| Command | Fixture / cursor position | Expected result |
+|---|---|---|
+| `DebugBreakpoint` then `DebugCurrTest` | breakpoint on `sample_test.go:8`, cursor inside `TestGreetPass` | notify `building debug helper...` (first run only), then `debug session ready`; `●` sign on line 8 |
+| `DebugContinue` | after the above | stops at `sample_test.go:8`, cursor jumps there, `▶` sign; notify `stopped at sample_test.go:8 (breakpoint, goroutine N)` |
+| `DebugNext` / `DebugStep` / `DebugStepOut` | halted in `TestGreetPass` | each moves the stop location (`DebugStep` into `Greet` in `sample.go`); `DebugContinue` again runs to exit → `program exited (status ...)` + session auto-stops |
+| `DebugEval` | halted, cursor on `p` in `sample.go` `Greet` | float: `ardango/dev/testdata.Person = testdata.Person {Name: "Ardan", ...}` |
+| `:Ardango DebugEval p.Name` | halted | float: `string = "Ardan"` |
+| `DebugLocals` | halted in `Greet` | popup: `-- args --` / `  p = ...` (no synthetic `~r0`) |
+| `DebugStack` | halted in `Greet` | popup: `sample.go:13:  #0  ...Greet` / `sample_test.go:8:  #1  ...TestGreetPass` / ...; `<CR>` on a frame line jumps to it |
+| `DebugStop` | mid-session | `debug session stopped`; signs cleared; `pgrep dlv` shows nothing left |
+| any `Debug*` | no session | notify `no debug session — start with :Ardango DebugCurrTest` |
+| `DebugCurrTest` | cursor not inside a `Test*` fn | notify `no Test function under the cursor` |
+| `DebugStop` immediately after `DebugCurrTest` | (before the helper connects) | no error, no orphaned `dlv` (`pgrep dlv`) |
+| `:qa` mid-session | halted or running | Neovim exits within ~½s; `pgrep dlv` / the compiled test binary show nothing left |
+
+Headless probing (no interactive TTY needed) works well here — spawn
+`nvim --clean -u ../init.lua --headless` from `dev/testdata/`, drive with
+`:Ardango Debug…` via `-c`, and `vim.wait(ms, cond)` for the async
+notifications. Always end the script with `vim.cmd('qa!')` on every path;
+an error before it leaves headless Neovim hanging.
 
 Testing `SignatureInStatusLine` without a real LSP client: `dev/init.lua`
 doesn't attach `gopls` (no `nvim-lspconfig` in `dev/.deps/`), so the

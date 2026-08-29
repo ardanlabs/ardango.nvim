@@ -38,6 +38,39 @@ instead of/alongside flags (defaults to 1000 if omitted). Examples:
 :Ardango SignatureInStatusLine 500 float
 ```
 
+## Debugging (Delve)
+
+Drive a [Delve](https://github.com/go-delve/delve) session on the current
+buffer's package without leaving Neovim — one session at a time, with a
+breakpoint sign in the gutter and the stop location marked and jumped to.
+
+- __DebugCurrTest__ / __DebugCurrBenchmark__ / __DebugPackage__: start a session on the `Test*`/`Benchmark*` function under the cursor (`dlv test`) or on the package (`dlv debug`), stopping at entry.
+- __DebugContinue__ / __DebugNext__ / __DebugStep__ / __DebugStepOut__: run / step over / step into / step out (only while halted).
+- __DebugBreakpoint__: toggle a breakpoint on the current line. Works with no session running; breakpoints persist across sessions.
+- __DebugEval__: show the value of an expression — the identifier under the cursor by default (`p`, `p.Name`, `xs[i]`), or `:Ardango DebugEval <expr>` — in a floating window, like an LSP hover.
+- __DebugLocals__: the current frame's args and locals, in a popup.
+- __DebugStack__: the goroutine's call stack, in a popup; `<CR>` on a frame jumps to it.
+- __DebugStop__: end the session (also automatic on program exit / `:q`).
+
+All are reachable via `:Ardango Debug…` with tab completion. `dlv` must be
+on `PATH`; a small Go helper is built automatically on first use (needs
+the `go` toolchain), so there's no manual build step.
+
+```lua
+local ardango = require "ardango"
+local opts = { noremap = true, silent = true }
+vim.keymap.set('n', '<leader>dt', ardango.DebugCurrTest, opts)
+vim.keymap.set('n', '<leader>db', ardango.DebugBreakpoint, opts)
+vim.keymap.set('n', '<leader>dc', ardango.DebugContinue, opts)
+vim.keymap.set('n', '<leader>dn', ardango.DebugNext, opts)
+vim.keymap.set('n', '<leader>ds', ardango.DebugStep, opts)
+vim.keymap.set('n', '<leader>do', ardango.DebugStepOut, opts)
+vim.keymap.set('n', '<leader>de', ardango.DebugEval, opts)
+vim.keymap.set('n', '<leader>dl', ardango.DebugLocals, opts)
+vim.keymap.set('n', '<leader>dS', ardango.DebugStack, opts)
+vim.keymap.set('n', '<leader>dq', ardango.DebugStop, opts)
+```
+
 ## Dependencies
 
 - [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter)
@@ -45,6 +78,7 @@ instead of/alongside flags (defaults to 1000 if omitted). Examples:
 - [nui.nvim](https://github.com/MunifTanjim/nui.nvim)
 - [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) — optional: used for the tag name/value prompts (`AddTagToField` & co.), and for browsing test/build failures when you pass `{ telescope = true }`. Falls back to plain `vim.ui.input`/the quickfix list if it isn't installed.
 - `gofmt` — optional, ships with the Go toolchain (so present anywhere `go` is): used to re-align struct columns after a tag edit. Skipped silently if it isn't on `PATH`.
+- [`dlv`](https://github.com/go-delve/delve) (Delve) — optional: required by the `Debug*` commands. The `go` toolchain is also needed the first time (to build the bundled debug helper).
 
 Run `:checkhealth ardango` to verify the `go` binary, the Go treesitter
 parser, and these dependencies are all in place. `:help ardango` covers
