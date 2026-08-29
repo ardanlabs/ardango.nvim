@@ -83,9 +83,9 @@ the README recommends:
 - `<leader>gr` — `RunLastTest`
 - `<leader>taf` / `<leader>tas` — add tag to field / struct
 - `<leader>trf` / `<leader>trs` — remove tag from field / struct
-- `<leader>d…` — the `Debug*` commands: `dt` start on test, `db` toggle
-  breakpoint, `dc`/`dn`/`ds`/`do` continue/next/step/stepout, `de`/`dl`/`dS`
-  eval/locals/stack, `dq` stop
+- `<leader>d…` — the `Debug*` commands: `dt`/`dB`/`dP` start on
+  test/benchmark/package, `db` toggle breakpoint, `dc`/`dn`/`ds`/`do`
+  continue/next/step/stepout, `de`/`dl`/`dS` eval/locals/stack, `dq` stop
 
 ## Fixtures (`dev/testdata/`)
 

@@ -222,7 +222,7 @@ M.RunLastTest = function(opts)
 end
 
 -- Debug commands - drive Delve through lua/ardango/debug.lua (which spawns
--- `dlv --headless` + the bin/ardango-dbg proxy). DebugCurrTest/
+-- `dlv --headless` plus the cmd/ardango-dbg proxy). DebugCurrTest/
 -- DebugCurrBenchmark find the function under the cursor the same way
 -- RunCurrTest/RunCurrBenchmark do, then hand off to debug.start; the rest
 -- are session controls (no cursor context needed).
@@ -278,8 +278,8 @@ M.DebugStop = dbg.stop
 -- floating window, like an LSP hover. Halted target only.
 M.DebugEval = dbg.eval
 
--- DebugLocals lists the current frame's args + local variables in the
--- results popup; DebugStack shows the goroutine's call stack there (press
+-- DebugLocals lists the current frame's args + local variables in a
+-- popup; DebugStack shows the goroutine's call stack in a popup (press
 -- <CR> on a frame line to jump to it). Halted target only.
 M.DebugLocals = dbg.locals
 M.DebugStack = dbg.stack

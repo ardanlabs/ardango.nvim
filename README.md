@@ -60,6 +60,8 @@ the `go` toolchain), so there's no manual build step.
 local ardango = require "ardango"
 local opts = { noremap = true, silent = true }
 vim.keymap.set('n', '<leader>dt', ardango.DebugCurrTest, opts)
+vim.keymap.set('n', '<leader>dB', ardango.DebugCurrBenchmark, opts)
+vim.keymap.set('n', '<leader>dP', ardango.DebugPackage, opts)
 vim.keymap.set('n', '<leader>db', ardango.DebugBreakpoint, opts)
 vim.keymap.set('n', '<leader>dc', ardango.DebugContinue, opts)
 vim.keymap.set('n', '<leader>dn', ardango.DebugNext, opts)

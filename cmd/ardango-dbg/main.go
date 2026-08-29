@@ -493,11 +493,19 @@ func main() {
 	}
 
 	// stdin closed - Neovim is gone, possibly without sending "stop" (a
-	// crash / SIGKILL). Don't let the debuggee outlive us.
+	// crash / SIGKILL). Kill the debuggee so it doesn't outlive us, but
+	// don't hang here if dlv is unresponsive.
 	s.mu.Lock()
+	s.stopping = true
 	c := s.client
 	s.mu.Unlock()
 	if c != nil {
-		_ = c.Detach(true)
+		done := make(chan struct{})
+		go func() { _ = c.Detach(true); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+		}
 	}
+	os.Exit(0)
 }

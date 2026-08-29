@@ -24,9 +24,10 @@ local ui = require('ardango.ui')
 local M = {}
 
 -- This file is lua/ardango/debug.lua, so three :h strips lua/ardango/ and
--- the filename to give the plugin root. The Delve proxy helper is built
--- (lazily, on first use - see ensure_helper) from cmd/ardango-dbg into the
--- cache dir, so it survives a plugin reinstall and a read-only plugin dir.
+-- the filename to give the plugin root. The Delve proxy helper (see
+-- cmd/ardango-dbg) is built lazily on first use - see ensure_helper - into
+-- the cache dir, so it survives a plugin reinstall and a read-only plugin
+-- dir.
 local PLUGIN_ROOT = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h")
 local HELPER_SRC = PLUGIN_ROOT .. "/cmd/ardango-dbg"
 local HELPER_DIR = vim.fn.stdpath("cache") .. "/ardango"
@@ -56,7 +57,7 @@ local breakpoints = {}
 --   running     - a continue/next/step/stepout is outstanding
 --   next_id     - request id counter
 --   pending     - { [id] = function(response_table) }
---   stdout_buf  - partial-line accumulator for helper stdout
+--   pending_clears - clearbreak ops deferred until the target next halts
 local session = nil
 
 local function bpkey(file, line)
@@ -313,7 +314,10 @@ local function helper_fresh()
 end
 
 local helper_building = false
-local helper_waiters = {}
+-- The single pending "run once the helper is ready" callback. Only the
+-- latest matters (one debug session at a time), so a second Debug* issued
+-- mid-build replaces the first rather than queueing another start.
+local helper_waiter = nil
 
 local start_session -- defined below; called once the helper is ready
 
@@ -325,12 +329,12 @@ local function ensure_helper(cb)
     cb()
     return
   end
-  table.insert(helper_waiters, cb)
+  helper_waiter = cb
   if helper_building then
     return
   end
   if vim.fn.executable("go") ~= 1 then
-    helper_waiters = {}
+    helper_waiter = nil
     vim.notify("ardango: the debug helper needs building but `go` isn't on PATH", vim.log.levels.ERROR)
     return
   end
@@ -338,7 +342,7 @@ local function ensure_helper(cb)
   helper_building = true
   vim.fn.mkdir(HELPER_DIR, "p")
   vim.notify("ardango: building debug helper...", vim.log.levels.INFO)
-  vim.fn.jobstart({ "go", "build", "-o", HELPER, "./cmd/ardango-dbg" }, {
+  local job = vim.fn.jobstart({ "go", "build", "-o", HELPER, "./cmd/ardango-dbg" }, {
     cwd = PLUGIN_ROOT,
     on_stderr = function(_, d)
       local t = table.concat(d or {}, "\n")
@@ -348,20 +352,26 @@ local function ensure_helper(cb)
     end,
     on_exit = function(_, code)
       helper_building = false
-      local waiters = helper_waiters
-      helper_waiters = {}
+      local waiter = helper_waiter
+      helper_waiter = nil
       vim.schedule(function()
         if code ~= 0 or vim.fn.executable(HELPER) ~= 1 then
           vim.notify("ardango: debug helper build failed (exit " .. code .. ")", vim.log.levels.ERROR)
           return
         end
         vim.notify("ardango: debug helper built", vim.log.levels.INFO)
-        for _, w in ipairs(waiters) do
-          w()
+        if waiter then
+          waiter()
         end
       end)
     end,
   })
+
+  if job <= 0 then
+    helper_building = false
+    helper_waiter = nil
+    vim.notify("ardango: couldn't start `go build` for the debug helper", vim.log.levels.ERROR)
+  end
 end
 
 -- spec = { mode = "test" | "bench" | "package", dir = <absolute buffer dir>,
@@ -391,7 +401,8 @@ start_session = function(spec)
     "dlv", spec.mode == "package" and "debug" or "test", ".",
     "--headless", "--listen=127.0.0.1:0", "--api-version=2", "--accept-multiclient",
   }
-  vim.list_extend(cmd, (config.options.debug and config.options.debug.dlv_args) or {})
+  local dlv_args = config.options.debug and config.options.debug.dlv_args
+  vim.list_extend(cmd, type(dlv_args) == "table" and dlv_args or {})
   if spec.mode == "test" then
     vim.list_extend(cmd, { "--", "-test.run", "^" .. spec.run .. "$" })
   elseif spec.mode == "bench" then
@@ -679,6 +690,7 @@ api.nvim_create_autocmd("VimLeavePre", {
     if not s then
       return
     end
+    s.stopping = true
     if s.helper_job then
       -- Give the helper up to 500ms to Halt + Detach(kill) dlv cleanly so
       -- the compiled test binary doesn't outlive the editor; then hard-stop.

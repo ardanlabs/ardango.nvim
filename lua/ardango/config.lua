@@ -43,8 +43,13 @@ M.setup = function(opts)
     M.options.tag_options = vim.deepcopy(opts.tag_options)
   end
   -- Same array-replace (not merge) treatment as tag_options.
-  if opts.debug and opts.debug.dlv_args then
-    M.options.debug.dlv_args = vim.deepcopy(opts.debug.dlv_args)
+  if opts.debug and opts.debug.dlv_args ~= nil then
+    if vim.islist(opts.debug.dlv_args) then
+      M.options.debug.dlv_args = vim.deepcopy(opts.debug.dlv_args)
+    else
+      vim.notify("ardango: setup: debug.dlv_args must be a list; ignoring it", vim.log.levels.WARN)
+      M.options.debug.dlv_args = {}
+    end
   end
 end
 

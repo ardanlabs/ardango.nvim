@@ -240,14 +240,15 @@ ardango.DebugCurrTest()                                  *ardango.DebugCurrTest*
 
 ardango.DebugCurrBenchmark()                        *ardango.DebugCurrBenchmark*
     Same for the Benchmark* function under the cursor
-    (dlv test -- -test.bench ^Name$ -test.run ^$ -test.benchmem).
+    (dlv test -- -test.run ^$ -test.bench ^Name$ -test.benchmem).
 
 ardango.DebugPackage()                                    *ardango.DebugPackage*
     Debugs the current buffer's package as a program (dlv debug).
 
 ardango.DebugStop()                                          *ardango.DebugStop*
     Ends the session: detaches and kills the debuggee, clears the signs.
-    Also runs automatically when the program exits and on VimLeavePre.
+    The session is also torn down automatically when the program exits
+    and when Neovim quits.
 
 Stepping (only while the target is halted) ~
 
