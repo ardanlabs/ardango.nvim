@@ -69,8 +69,9 @@ completion — `test`, `continue`, `over`/`into`/`out`, `break [cond]`,
 `eval [expr]`, `stack`, `up`/`down`/`frame <n>`, `goroutines [all]`,
 `goroutine <id>`, `breaks`, `status`, `stop`, … — and **`:ArdangoDebug`**
 with no argument (or `ardango.DebugMenu`) opens a **fuzzy picker** of them
-all (via `vim.ui.select`, so it uses telescope-ui-select / dressing /
-snacks / fzf-lua if you have one).
+all: a Telescope picker if telescope.nvim is installed, otherwise
+`vim.ui.select` (which fuzzy-finds through telescope-ui-select / dressing
+/ snacks / fzf-lua if you have one set up).
 
 `dlv` must be on `PATH`; a small Go helper is built automatically on first
 use (needs the `go` toolchain), so there's no manual build step.

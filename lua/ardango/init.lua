@@ -645,9 +645,67 @@ local function run_debug(entry, argstr)
   end
 end
 
--- The fuzzy debug menu. vim.ui.select picks up the user's selecter
--- (telescope-ui-select, dressing, snacks, fzf-lua, ...) for fuzzy find,
--- and degrades to a plain numbered prompt.
+-- Runs a menu-selected entry, prompting for its argument first if it
+-- takes one.
+local function menu_pick(e)
+  if not e then
+    return
+  end
+  if e[4] then
+    vim.ui.input({ prompt = e[1] .. ": " }, function(arg)
+      if arg ~= nil then
+        run_debug(e, arg)
+      end
+    end)
+  else
+    run_debug(e, "")
+  end
+end
+
+-- Telescope debug-command picker (real fuzzy find + narrowing). Returns
+-- false if telescope.nvim isn't installed, so DebugMenu falls back to
+-- vim.ui.select.
+local function debug_menu_telescope(items)
+  local ok_p, pickers = pcall(require, "telescope.pickers")
+  local ok_f, finders = pcall(require, "telescope.finders")
+  local ok_c, tconf = pcall(require, "telescope.config")
+  local ok_a, actions = pcall(require, "telescope.actions")
+  local ok_s, action_state = pcall(require, "telescope.actions.state")
+  if not (ok_p and ok_f and ok_c and ok_a and ok_s) then
+    return false
+  end
+
+  pickers.new({}, {
+    prompt_title = "Debug",
+    finder = finders.new_table({
+      results = items,
+      entry_maker = function(e)
+        return {
+          value = e,
+          display = string.format("%-11s  %s", e[1], e[3]),
+          ordinal = e[1] .. " " .. e[3],
+        }
+      end,
+    }),
+    sorter = tconf.values.generic_sorter({}),
+    attach_mappings = function(prompt_bufnr)
+      actions.select_default:replace(function()
+        local sel = action_state.get_selected_entry()
+        actions.close(prompt_bufnr)
+        if sel then
+          menu_pick(sel.value)
+        end
+      end)
+      return true
+    end,
+  }):find()
+  return true
+end
+
+-- The debug-command picker. Uses a Telescope picker when telescope.nvim
+-- is installed (fuzzy find), otherwise vim.ui.select (which itself
+-- fuzzy-finds via telescope-ui-select / dressing / snacks / fzf-lua, or
+-- is a plain numbered prompt).
 function M.DebugMenu()
   local items = {}
   for _, e in ipairs(DEBUG_SUBCOMMANDS) do
@@ -655,23 +713,13 @@ function M.DebugMenu()
       items[#items + 1] = e
     end
   end
+  if debug_menu_telescope(items) then
+    return
+  end
   vim.ui.select(items, {
     prompt = "Debug",
     format_item = function(e) return string.format("%-11s  %s", e[1], e[3]) end,
-  }, function(e)
-    if not e then
-      return
-    end
-    if e[4] then
-      vim.ui.input({ prompt = e[1] .. ": " }, function(arg)
-        if arg ~= nil then
-          run_debug(e, arg)
-        end
-      end)
-    else
-      run_debug(e, "")
-    end
-  end)
+  }, menu_pick)
 end
 
 vim.api.nvim_create_user_command("ArdangoDebug", function(cmd_opts)

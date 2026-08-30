@@ -394,11 +394,12 @@ Examples: >
 <
                                                         *ardango.DebugMenu*
 :ArdangoDebug with no argument (or `menu`, or require("ardango").DebugMenu())
-opens a picker of every debug command with a one-line description, via
-|vim.ui.select()| - so it fuzzy-finds through telescope-ui-select /
-dressing.nvim / snacks / fzf-lua when one is installed, and is a plain
-numbered menu otherwise. Commands that take an argument (eval, break,
-frame, goroutine) prompt for it after selection.
+opens a picker of every debug command with a one-line description. With
+telescope.nvim installed it's a Telescope picker (fuzzy find + narrow);
+otherwise it's |vim.ui.select()| - which fuzzy-finds through
+telescope-ui-select / dressing.nvim / snacks / fzf-lua if one is set up,
+or is a plain numbered prompt. Commands that take an argument (eval,
+break, frame, goroutine) prompt for it after selection.
 
 ==============================================================================
 6. Configuration                                          *ardango-configuration*
