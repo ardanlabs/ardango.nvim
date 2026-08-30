@@ -51,6 +51,9 @@ vim.keymap.set("n", "<leader>gh", function() ardango.SignatureInStatusLine(1000)
 vim.keymap.set("n", "<leader>gH", function() ardango.SignatureInStatusLine(1000, { float = true }) end, opts)
 
 -- Delve debugging (needs `dlv` on PATH; the helper builds on first use).
+-- Everything is also under :ArdangoDebug <sub>, and <leader>dd opens the
+-- fuzzy debug menu.
+vim.keymap.set("n", "<leader>dd", ardango.DebugMenu, opts)
 vim.keymap.set("n", "<leader>dt", ardango.DebugCurrTest, opts)
 vim.keymap.set("n", "<leader>dB", ardango.DebugCurrBenchmark, opts)
 vim.keymap.set("n", "<leader>dP", ardango.DebugPackage, opts)

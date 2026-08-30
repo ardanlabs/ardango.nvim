@@ -3,7 +3,7 @@
 -- Neovim spawns two child processes and never blocks on either:
 --   1. `dlv <test|debug> ... --headless --listen=127.0.0.1:0` - its stdout
 --      is scanned for the "API server listening at: ADDR" line.
---   2. bin/ardango-dbg - a thin proxy (see cmd/ardango-dbg/main.go). We
+--   2. the ardango-dbg helper - a thin proxy (see cmd/ardango-dbg/main.go). We
 --      talk to it over stdin/stdout with a newline-delimited JSON line
 --      protocol: one request object per line out (via chansend), one
 --      response object per line back (via jobstart's on_stdout). Every
@@ -381,7 +381,7 @@ local function connect_helper(s)
       send(s, { op = "break", file = s.entry.file, line = s.entry.line }, function(bp)
         if not bp.ok then
           vim.notify("ardango: couldn't set the entry breakpoint (" .. (bp.error or "?") ..
-            ") — set one yourself, then :Ardango DebugContinue", vim.log.levels.WARN)
+            ") — set one yourself, then :ArdangoDebug continue", vim.log.levels.WARN)
           return
         end
         s.entry_bp = { file = s.entry.file, line = s.entry.line }
@@ -389,7 +389,7 @@ local function connect_helper(s)
       end)
     else
       vim.notify("ardango: debug session ready — set a breakpoint " ..
-        "(:Ardango DebugBreakpoint), then :Ardango DebugContinue", vim.log.levels.INFO)
+        "(:ArdangoDebug break), then :ArdangoDebug continue", vim.log.levels.INFO)
     end
   end)
 end
@@ -603,7 +603,7 @@ local STEP_TIMEOUT_MS = 30000
 run_cmd = function(op)
   local s = session
   if not s or not s.ready then
-    vim.notify("ardango: no debug session — start with :Ardango DebugCurrTest", vim.log.levels.WARN)
+    vim.notify("ardango: no debug session — start with :ArdangoDebug test", vim.log.levels.WARN)
     return
   end
   if s.running then
@@ -656,7 +656,7 @@ run_cmd = function(op)
       s.running = false
       status_changed()
       vim.notify("ardango: " .. op .. " timed out after " .. (STEP_TIMEOUT_MS / 1000) ..
-        "s — session may be wedged, :Ardango DebugStop to reset", vim.log.levels.ERROR)
+        "s — session may be wedged, :ArdangoDebug stop to reset", vim.log.levels.ERROR)
     end, STEP_TIMEOUT_MS)
   end
 end
@@ -675,7 +675,7 @@ function M.step_out() run_cmd("stepout") end
 
 local function inspect_ok(s)
   if not s or not s.ready then
-    vim.notify("ardango: no debug session — start with :Ardango DebugCurrTest", vim.log.levels.WARN)
+    vim.notify("ardango: no debug session — start with :ArdangoDebug test", vim.log.levels.WARN)
     return false
   end
   if s.running then
@@ -873,7 +873,7 @@ function M.frame(n)
   end
   local num = tonumber(n)
   if not num or num ~= math.floor(num) then
-    vim.notify("ardango: DebugFrame needs a frame number (see :Ardango DebugStack)",
+    vim.notify("ardango: DebugFrame needs a frame number (see :ArdangoDebug stack)",
       vim.log.levels.WARN)
     return
   end
@@ -913,7 +913,7 @@ end
 -- DebugGoroutines: goroutines with their user-code location, in a popup.
 -- <CR> switches to the one under the cursor. Pure-runtime goroutines
 -- (parked in runtime.*, no user frame) are hidden behind a "[+N runtime]"
--- line - press `a`, or `:Ardango DebugGoroutines all`, to show them.
+-- line - press `a`, or `:ArdangoDebug goroutines all`, to show them.
 function M.goroutines(opts)
   opts = opts or {}
   local s = session
@@ -982,7 +982,7 @@ function M.switch_goroutine(id)
   end
   local gid = tonumber(id)
   if not gid or gid ~= math.floor(gid) then
-    vim.notify("ardango: DebugGoroutine needs a goroutine id (see :Ardango DebugGoroutines)",
+    vim.notify("ardango: DebugGoroutine needs a goroutine id (see :ArdangoDebug goroutines)",
       vim.log.levels.WARN)
     return
   end
@@ -1035,7 +1035,7 @@ end
 
 -- Toggle a breakpoint on the current line. With {cond} (a Go boolean
 -- expression), set/replace a conditional breakpoint instead of toggling -
--- ":Ardango DebugBreakpoint x > 5".
+-- ":ArdangoDebug break x > 5".
 function M.toggle_breakpoint(cond)
   local file = vim.fn.expand("%:p")
   if file == "" then
@@ -1152,7 +1152,7 @@ end
 
 -- DebugBreakpoints: list every breakpoint. In the nui popup: <CR> jumps,
 -- dd deletes the one under the cursor, D clears all. With opts.telescope
--- (or :Ardango DebugBreakpoints telescope), a Telescope picker with a
+-- (or :ArdangoDebug breaks telescope), a Telescope picker with a
 -- source preview instead - <C-d> deletes; falls back to the popup if
 -- telescope.nvim isn't installed.
 function M.breakpoints(opts)

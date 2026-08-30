@@ -592,16 +592,132 @@ M.RemoveTagFromVisualFields = function()
   end)
 end
 
+-- ==========================================================================
+-- :ArdangoDebug <sub> [args] - all the debug commands, in their own
+-- namespace. Each row: { sub, M-function, one-line description, arg-kind }.
+-- arg-kind: "text" (free expr / breakpoint condition), "num" (a number),
+-- or nil. Order is the completion / menu order.
+-- ==========================================================================
+local DEBUG_SUBCOMMANDS = {
+  { "test",        "DebugCurrTest",           "debug the Test under the cursor" },
+  { "bench",       "DebugCurrBenchmark",      "debug the Benchmark under the cursor" },
+  { "package",     "DebugPackage",            "dlv debug the current package" },
+  { "continue",    "DebugContinue",           "run to the next breakpoint / exit" },
+  { "over",        "DebugStepOver",           "step over the current line" },
+  { "into",        "DebugStepInto",           "step into a call" },
+  { "out",         "DebugStepOut",            "run until this function returns" },
+  { "stop",        "DebugStop",               "end the session" },
+  { "break",       "DebugBreakpoint",         "toggle breakpoint here (arg: condition)", "text" },
+  { "breaks",      "DebugBreakpoints",        "list breakpoints",                        "text" },
+  { "clearbreaks", "DebugBreakpointClearAll", "remove every breakpoint" },
+  { "eval",        "DebugEval",               "evaluate an expression (arg: expr)",     "text" },
+  { "locals",      "DebugLocals",             "show the frame's args + locals" },
+  { "stack",       "DebugStack",              "show the call stack" },
+  { "up",          "DebugFrameUp",            "select the caller frame" },
+  { "down",        "DebugFrameDown",          "select the callee frame" },
+  { "frame",       "DebugFrame",              "select frame N (arg: number)",           "num" },
+  { "goroutines",  "DebugGoroutines",         "list goroutines",                        "text" },
+  { "goroutine",   "DebugGoroutine",          "switch to goroutine N (arg: id)",        "num" },
+  { "status",      "DebugStatus",             "echo the current debug status" },
+  { "menu",        "DebugMenu",               "this menu" },
+}
+
+local DEBUG_BY_SUB, DEBUG_SUB_BY_FN = {}, {}
+for _, e in ipairs(DEBUG_SUBCOMMANDS) do
+  DEBUG_BY_SUB[e[1]] = e
+  DEBUG_SUB_BY_FN[e[2]] = e[1]
+end
+
+-- Runs a resolved subcommand entry with the rest-of-line arg string.
+local function run_debug(entry, argstr)
+  local fn = M[entry[2]]
+  argstr = argstr or ""
+  if entry[4] == "num" then
+    fn(argstr ~= "" and argstr or nil)
+  elseif entry[1] == "breaks" then
+    fn(argstr == "telescope" and { telescope = true } or nil)
+  elseif entry[1] == "goroutines" then
+    fn(argstr == "all" and { all = true } or nil)
+  elseif entry[4] == "text" then
+    fn(argstr) -- "" is meaningful: eval -> <cexpr>, break -> plain toggle
+  else
+    fn()
+  end
+end
+
+-- The fuzzy debug menu. vim.ui.select picks up the user's selecter
+-- (telescope-ui-select, dressing, snacks, fzf-lua, ...) for fuzzy find,
+-- and degrades to a plain numbered prompt.
+function M.DebugMenu()
+  local items = {}
+  for _, e in ipairs(DEBUG_SUBCOMMANDS) do
+    if e[1] ~= "menu" then
+      items[#items + 1] = e
+    end
+  end
+  vim.ui.select(items, {
+    prompt = "Debug",
+    format_item = function(e) return string.format("%-11s  %s", e[1], e[3]) end,
+  }, function(e)
+    if not e then
+      return
+    end
+    if e[4] then
+      vim.ui.input({ prompt = e[1] .. ": " }, function(arg)
+        if arg ~= nil then
+          run_debug(e, arg)
+        end
+      end)
+    else
+      run_debug(e, "")
+    end
+  end)
+end
+
+vim.api.nvim_create_user_command("ArdangoDebug", function(cmd_opts)
+  local sub = cmd_opts.fargs[1]
+  if not sub or sub == "menu" then
+    M.DebugMenu()
+    return
+  end
+  local entry = DEBUG_BY_SUB[sub]
+  if not entry then
+    vim.notify("ardango: unknown debug command '" .. sub .. "' (:ArdangoDebug <Tab>)",
+      vim.log.levels.ERROR)
+    return
+  end
+  run_debug(entry, table.concat({ unpack(cmd_opts.fargs, 2) }, " "))
+end, {
+  nargs = "*",
+  desc = "Run an ardango.nvim debug command",
+  complete = function(arglead, cmdline)
+    local words = {}
+    for w in cmdline:gmatch("%S+") do
+      words[#words + 1] = w
+    end
+    local on_sub = #words <= 1 or (#words == 2 and not cmdline:match("%s$"))
+    if on_sub then
+      local subs = {}
+      for _, e in ipairs(DEBUG_SUBCOMMANDS) do
+        subs[#subs + 1] = e[1]
+      end
+      return vim.tbl_filter(function(c) return c:find(arglead, 1, true) == 1 end, subs)
+    end
+    if words[2] == "breaks" then
+      return { "telescope" }
+    end
+    if words[2] == "goroutines" then
+      return { "all" }
+    end
+    return {}
+  end,
+})
+
 -- Every M command reachable from :Ardango, in the order they're offered
--- for completion.
+-- for completion. (Debug commands moved to :ArdangoDebug.)
 local EX_COMMANDS = {
   "RunCurrTest", "RunFileTests", "RunPackageTests", "RunCurrBenchmark",
   "BuildCurrPackage", "RunLastTest", "CopyLastCmd",
-  "DebugCurrTest", "DebugCurrBenchmark", "DebugPackage",
-  "DebugBreakpoint", "DebugContinue", "DebugStepOver", "DebugStepInto", "DebugStepOut", "DebugStop",
-  "DebugEval", "DebugLocals", "DebugStack", "DebugFrameUp", "DebugFrameDown", "DebugFrame",
-  "DebugGoroutines", "DebugGoroutine", "DebugBreakpoints", "DebugBreakpointClearAll",
-  "DebugStatus",
   "AddTagToField", "AddTagsToStruct", "RemoveTagFromField", "RemoveTagsFromStruct",
   "AddTagToVisualFields", "RemoveTagFromVisualFields",
   "OrgBufImports", "SignatureInStatusLine",
@@ -626,35 +742,22 @@ local BOOL_OPTS = { "quickfix", "telescope", "verbose", "dry_run", "float", "all
 -- or `:Ardango SignatureInStatusLine 500 float`.
 vim.api.nvim_create_user_command("Ardango", function(cmd_opts)
   local name = cmd_opts.fargs[1]
+
+  -- Debug commands moved to their own :ArdangoDebug namespace.
+  if name and name:match("^Debug") then
+    local s = DEBUG_SUB_BY_FN[name]
+    vim.notify("ardango: debug commands are now :ArdangoDebug" ..
+      (s and (" — try `:ArdangoDebug " .. s .. "`") or " (`:ArdangoDebug <Tab>`)"),
+      vim.log.levels.WARN)
+    return
+  end
+
   if not name or not M[name] then
     vim.notify("ardango: unknown command '" .. tostring(name) .. "'", vim.log.levels.ERROR)
     return
   end
 
   local rest = { unpack(cmd_opts.fargs, 2) }
-
-  -- DebugEval / DebugBreakpoint take free text (the rest of the line) -
-  -- an expression / a breakpoint condition. DebugEval with none falls
-  -- back to the <cexpr>; DebugBreakpoint with none is a plain toggle.
-  if name == "DebugEval" then
-    M.DebugEval(table.concat(rest, " "))
-    return
-  end
-  if name == "DebugBreakpoint" then
-    M.DebugBreakpoint(table.concat(rest, " "))
-    return
-  end
-
-  -- DebugFrame takes a frame number, DebugGoroutine a goroutine id
-  -- (validated by the functions themselves).
-  if name == "DebugFrame" then
-    M.DebugFrame(rest[1])
-    return
-  end
-  if name == "DebugGoroutine" then
-    M.DebugGoroutine(rest[1])
-    return
-  end
 
   if WAIT_MS_COMMANDS[name] then
     local wait_ms = tonumber(rest[1]) or DEFAULT_WAIT_MS
@@ -689,12 +792,6 @@ end, {
     local prefix_words = {}
     for w in prefix:gmatch("%S+") do
       table.insert(prefix_words, w)
-    end
-    -- These take free text / a number, not a flag.
-    local w2 = prefix_words[2]
-    if w2 == "DebugEval" or w2 == "DebugBreakpoint" or w2 == "DebugFrame"
-        or w2 == "DebugGoroutine" then
-      return {}
     end
     local candidates = (#prefix_words <= 1) and EX_COMMANDS or BOOL_OPTS
     return vim.tbl_filter(function(c) return c:find(arglead, 1, true) == 1 end, candidates)
