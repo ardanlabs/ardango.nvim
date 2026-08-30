@@ -313,6 +313,15 @@ M.DebugGoroutine = dbg.switch_goroutine
 M.DebugBreakpoints = dbg.breakpoints
 M.DebugBreakpointClearAll = dbg.clear_breakpoints
 
+-- debug_status() returns a compact one-line status for a statusline /
+-- winbar / lualine component ("" when there's no session). DebugStatus
+-- echoes it as a notification.
+M.debug_status = dbg.debug_status
+M.DebugStatus = function()
+  local st = dbg.debug_status()
+  vim.notify("ardango: " .. (st ~= "" and st or "no debug session"), vim.log.levels.INFO)
+end
+
 -- OrgImports is a function to update imports of the current buffer.
 M.OrgBufImports = function(wait_ms)
   local params = vim.lsp.util.make_range_params()
@@ -585,6 +594,7 @@ local EX_COMMANDS = {
   "DebugBreakpoint", "DebugContinue", "DebugNext", "DebugStep", "DebugStepOut", "DebugStop",
   "DebugEval", "DebugLocals", "DebugStack", "DebugFrameUp", "DebugFrameDown", "DebugFrame",
   "DebugGoroutines", "DebugGoroutine", "DebugBreakpoints", "DebugBreakpointClearAll",
+  "DebugStatus",
   "AddTagToField", "AddTagsToStruct", "RemoveTagFromField", "RemoveTagsFromStruct",
   "AddTagToVisualFields", "RemoveTagFromVisualFields",
   "OrgBufImports", "SignatureInStatusLine",

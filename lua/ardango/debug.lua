@@ -88,6 +88,15 @@ local function clear_position_sign()
   pcall(vim.fn.sign_unplace, SIGN_GROUP, { id = POS_SIGN_ID })
 end
 
+-- Nudges anything showing debug_status() (statusline, winbar, lualine, ...)
+-- to re-render, and fires a `User ArdangoDebug` autocmd for custom hooks.
+local function status_changed()
+  vim.schedule(function()
+    pcall(vim.cmd, "redrawstatus")
+    pcall(vim.api.nvim_exec_autocmds, "User", { pattern = "ArdangoDebug" })
+  end)
+end
+
 -- Ends session s: stops both child processes and, if it's still the
 -- current session, drops the position sign and marks every breakpoint
 -- un-applied so the next session re-syncs them (breakpoint signs stay put
@@ -120,6 +129,7 @@ local function finish(s)
     -- sign_unplace is a vim.fn call - finish() can run from a job
     -- on_exit, so hop to a safe context for it.
     vim.schedule(clear_position_sign)
+    status_changed()
   end
 end
 
@@ -283,6 +293,7 @@ local function show_stop(s, st)
   -- A fresh stop invalidates any frame the user had navigated to.
   s.frame = 0
   s.frames = nil
+  s.goroutine = st.goroutine
 
   -- The one-shot entry breakpoint has done its job.
   local was_entry = s.entry_bp ~= nil
@@ -293,11 +304,15 @@ local function show_stop(s, st)
   end
 
   if not st.file or st.file == "" then
+    s.loc = nil
     clear_position_sign()
+    status_changed()
     vim.notify("ardango: stopped (" .. (st.reason or "?") .. "), no source location",
       vim.log.levels.WARN)
     return
   end
+  s.loc = { file = st.file, line = st.line, func = st["function"] }
+  status_changed()
   place_stop_sign(st.file, st.line)
   -- Breakpoint edits made while the target was running land now (clears
   -- before adds, in case the same line was toggled off then on).
@@ -355,6 +370,7 @@ local function connect_helper(s)
       return
     end
     s.ready = true
+    status_changed()
     flush_pending_clears(s)
     sync_breakpoints(s)
 
@@ -421,6 +437,7 @@ local function ensure_helper(cb)
   end
 
   helper_building = true
+  status_changed()
   vim.fn.mkdir(HELPER_DIR, "p")
   vim.notify("ardango: building debug helper...", vim.log.levels.INFO)
   local job = vim.fn.jobstart({ "go", "build", "-o", HELPER, "./cmd/ardango-dbg" }, {
@@ -433,6 +450,7 @@ local function ensure_helper(cb)
     end,
     on_exit = function(_, code)
       helper_building = false
+      status_changed()
       local waiter = helper_waiter
       helper_waiter = nil
       vim.schedule(function()
@@ -568,6 +586,7 @@ function M.stop()
     -- do gracefully, just kill dlv now.
     pcall(vim.fn.jobstop, s.dlv_job)
   end
+  status_changed()
   vim.notify("ardango: debug session stopped", vim.log.levels.INFO)
 end
 
@@ -592,6 +611,7 @@ run_cmd = function(op)
     return
   end
   s.running = true
+  status_changed()
 
   local settled = false
   local id
@@ -601,6 +621,7 @@ run_cmd = function(op)
     end
     settled = true
     s.running = false
+    status_changed()
     if not resp.ok then
       local err = resp.error or "?"
       -- Stepping off the top of the stack is a boundary, not a failure.
@@ -633,6 +654,7 @@ run_cmd = function(op)
       settled = true
       s.pending[id] = nil
       s.running = false
+      status_changed()
       vim.notify("ardango: " .. op .. " timed out after " .. (STEP_TIMEOUT_MS / 1000) ..
         "s — session may be wedged, :Ardango DebugStop to reset", vim.log.levels.ERROR)
     end, STEP_TIMEOUT_MS)
@@ -761,6 +783,8 @@ local function goto_frame(s, n)
     vim.fn.sign_place(POS_SIGN_ID, SIGN_GROUP, n == 0 and POS_SIGN or FRAME_SIGN, bufnr,
       { lnum = f.line, priority = 20 })
   end
+  s.loc = { file = f.file, line = f.line, func = f["function"] }
+  status_changed()
   local loc = (f.file ~= "" and f.file ~= nil) and (" (" .. short(f.file) .. ":" .. f.line .. ")")
       or " (no source)"
   vim.notify(string.format("ardango: frame #%d/%d: %s%s", n, #s.frames - 1, f["function"] or "?", loc),
@@ -915,8 +939,8 @@ function M.switch_goroutine(id)
     end
     s.frame = 0
     s.frames = nil
-    vim.notify("ardango: switched to goroutine " .. (resp.stopped and resp.stopped.goroutine or gid),
-      vim.log.levels.INFO)
+    s.goroutine = resp.stopped and resp.stopped.goroutine or gid
+    vim.notify("ardango: switched to goroutine " .. s.goroutine, vim.log.levels.INFO)
     with_frames(s, function(frames)
       goto_frame(s, first_user_frame(frames))
     end)
@@ -1121,6 +1145,53 @@ function M.clear_breakpoints()
     n = n + 1
   end
   vim.notify("ardango: cleared " .. n .. " breakpoint(s)", vim.log.levels.INFO)
+end
+
+-- --------------------------------------------------------------------------
+-- status
+-- --------------------------------------------------------------------------
+
+-- A compact one-line debug status for a statusline / winbar / lualine
+-- component. "" when there's no session. Re-render is nudged on every
+-- state change (redrawstatus + a `User ArdangoDebug` autocmd).
+--
+--   vim.o.statusline = "%f %{v:lua.require('ardango').debug_status()} %="
+--   vim.wo.winbar    = "%{v:lua.require('ardango').debug_status()}"
+--   -- lualine: { function() return require('ardango').debug_status() end }
+function M.debug_status()
+  if helper_building then
+    return "[debug: building helper]"
+  end
+  local s = session
+  if not s then
+    return ""
+  end
+  if not s.ready then
+    return "[debug: starting]"
+  end
+  if s.running then
+    return "[debug: running]"
+  end
+  local parts = { "debug:" }
+  local loc = s.loc
+  if loc then
+    if loc.func and loc.func ~= "" then
+      -- drop the package path prefix: ardango/dev/testdata.Greet -> testdata.Greet
+      parts[#parts + 1] = loc.func:gsub("^.*/", "")
+    end
+    if loc.file and loc.file ~= "" then
+      parts[#parts + 1] = short(loc.file) .. ":" .. (loc.line or 0)
+    end
+  end
+  if s.goroutine then
+    parts[#parts + 1] = "g" .. s.goroutine
+  end
+  if s.frame and s.frame > 0 then
+    parts[#parts + 1] = s.frames
+        and ("#" .. s.frame .. "/" .. (#s.frames - 1))
+        or ("#" .. s.frame)
+  end
+  return "[" .. table.concat(parts, " ") .. "]"
 end
 
 -- Re-place breakpoint signs when a file is (re)loaded - a wiped/reopened
