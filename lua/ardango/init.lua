@@ -306,6 +306,13 @@ M.DebugFrame = dbg.frame
 M.DebugGoroutines = dbg.goroutines
 M.DebugGoroutine = dbg.switch_goroutine
 
+-- DebugBreakpoints lists every breakpoint in a popup (<CR> jump, dd
+-- delete, D clear all); `:Ardango DebugBreakpoints telescope` uses a
+-- Telescope picker with a source preview instead. DebugBreakpointClearAll
+-- removes them all.
+M.DebugBreakpoints = dbg.breakpoints
+M.DebugBreakpointClearAll = dbg.clear_breakpoints
+
 -- OrgImports is a function to update imports of the current buffer.
 M.OrgBufImports = function(wait_ms)
   local params = vim.lsp.util.make_range_params()
@@ -577,7 +584,7 @@ local EX_COMMANDS = {
   "DebugCurrTest", "DebugCurrBenchmark", "DebugPackage",
   "DebugBreakpoint", "DebugContinue", "DebugNext", "DebugStep", "DebugStepOut", "DebugStop",
   "DebugEval", "DebugLocals", "DebugStack", "DebugFrameUp", "DebugFrameDown", "DebugFrame",
-  "DebugGoroutines", "DebugGoroutine",
+  "DebugGoroutines", "DebugGoroutine", "DebugBreakpoints", "DebugBreakpointClearAll",
   "AddTagToField", "AddTagsToStruct", "RemoveTagFromField", "RemoveTagsFromStruct",
   "AddTagToVisualFields", "RemoveTagFromVisualFields",
   "OrgBufImports", "SignatureInStatusLine",

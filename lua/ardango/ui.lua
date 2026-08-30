@@ -96,7 +96,13 @@ end
 -- state    - optional { bufnr, popup } table to reuse instead of the
 --            shared test/build results one, so an independent caller
 --            (debug locals/stack) doesn't unmount the results popup.
-M.show_popup = function(data, base_dir, state)
+-- opts     - optional:
+--   on_enter(line, lnum, close) - overrides the default <CR> (file:line
+--                                 jump). `close` unmounts the popup.
+--   keymaps  = { [lhs] = function(line, lnum, close) end } - extra
+--              normal-mode maps in the popup.
+M.show_popup = function(data, base_dir, state, opts)
+  opts = opts or {}
   state = state or result_popup_state
   if data and not (data[1] == "") then
     -- Close a still-open popup from a previous run rather than stacking
@@ -140,9 +146,15 @@ M.show_popup = function(data, base_dir, state)
     popup:map("n", "<esc>", close, { silent = true })
     popup:map("n", "q", close, { silent = true })
 
-    -- Jump to the file:line under the cursor, same as quickfix's <CR>.
+    -- <CR>: caller-supplied action, else jump to the file:line under the
+    -- cursor (same as quickfix's <CR>).
     popup:map("n", "<CR>", function()
       local line = api.nvim_get_current_line()
+      local lnum = api.nvim_win_get_cursor(0)[1]
+      if opts.on_enter then
+        opts.on_enter(line, lnum, close)
+        return
+      end
       local item = parse_line(line, base_dir or vim.fn.getcwd())
       if not item then
         return
@@ -150,6 +162,12 @@ M.show_popup = function(data, base_dir, state)
       close()
       jump_to(item)
     end, { silent = true })
+
+    for lhs, fn in pairs(opts.keymaps or {}) do
+      popup:map("n", lhs, function()
+        fn(api.nvim_get_current_line(), api.nvim_win_get_cursor(0)[1], close)
+      end, { silent = true })
+    end
   end
 end
 

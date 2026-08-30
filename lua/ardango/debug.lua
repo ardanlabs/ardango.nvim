@@ -927,6 +927,33 @@ end
 -- breakpoints
 -- --------------------------------------------------------------------------
 
+-- Removes the breakpoint identified by key: drops its sign, forgets it,
+-- and tells a live dlv (or queues the clear for the next stop).
+local function remove_bp(key)
+  local bp = breakpoints[key]
+  if not bp then
+    return
+  end
+  breakpoints[key] = nil
+  if bp.sign_id then
+    pcall(vim.fn.sign_unplace, SIGN_GROUP, { id = bp.sign_id })
+  end
+  -- Only needs an RPC if dlv actually has it (bp.applied). Send now if
+  -- the target's halted, else queue for the next stop - dropping it here
+  -- would leave a live, invisible breakpoint.
+  if session and bp.applied then
+    if session.ready and not session.running then
+      send(session, { op = "clearbreak", file = bp.file, line = bp.line }, function(r)
+        if not r.ok then
+          vim.notify("ardango: clear breakpoint failed: " .. (r.error or "?"), vim.log.levels.WARN)
+        end
+      end)
+    else
+      table.insert(session.pending_clears, { file = bp.file, line = bp.line })
+    end
+  end
+end
+
 function M.toggle_breakpoint()
   local file = vim.fn.expand("%:p")
   if file == "" then
@@ -937,26 +964,8 @@ function M.toggle_breakpoint()
   local key = bpkey(file, line)
   local bufnr = api.nvim_get_current_buf()
 
-  local existing = breakpoints[key]
-  if existing then
-    breakpoints[key] = nil
-    if existing.sign_id then
-      pcall(vim.fn.sign_unplace, SIGN_GROUP, { id = existing.sign_id })
-    end
-    -- Only needs an RPC if dlv actually has it (existing.applied). Send
-    -- now if the target's halted, otherwise queue it for the next stop -
-    -- dropping it here would leave a live, invisible breakpoint.
-    if session and existing.applied then
-      if session.ready and not session.running then
-        send(session, { op = "clearbreak", file = file, line = line }, function(r)
-          if not r.ok then
-            vim.notify("ardango: clear breakpoint failed: " .. (r.error or "?"), vim.log.levels.WARN)
-          end
-        end)
-      else
-        table.insert(session.pending_clears, { file = file, line = line })
-      end
-    end
+  if breakpoints[key] then
+    remove_bp(key)
     vim.notify(string.format("ardango: breakpoint removed %s:%d", short(file), line), vim.log.levels.INFO)
     return
   end
@@ -967,6 +976,169 @@ function M.toggle_breakpoint()
   local tail = (session and session.running) and " (applies when the target next stops)" or ""
   vim.notify(string.format("ardango: breakpoint set %s:%d%s", short(file), line, tail), vim.log.levels.INFO)
 end
+
+-- Sorted list of breakpoint records with the source line read in for
+-- display: { file, line, key, text }.
+local function bp_records()
+  local recs = {}
+  local file_cache = {}
+  for key, bp in pairs(breakpoints) do
+    local lines = file_cache[bp.file]
+    if lines == nil then
+      local loaded = vim.fn.bufnr(bp.file)
+      if loaded ~= -1 and api.nvim_buf_is_loaded(loaded) then
+        lines = api.nvim_buf_get_lines(loaded, 0, -1, false)
+      else
+        lines = vim.fn.filereadable(bp.file) == 1 and vim.fn.readfile(bp.file) or {}
+      end
+      file_cache[bp.file] = lines
+    end
+    recs[#recs + 1] = {
+      file = bp.file,
+      line = bp.line,
+      key = key,
+      text = vim.trim(lines[bp.line] or ""),
+    }
+  end
+  table.sort(recs, function(a, b)
+    if a.file ~= b.file then
+      return a.file < b.file
+    end
+    return a.line < b.line
+  end)
+  return recs
+end
+
+local function jump_to_bp(r)
+  pcall(vim.cmd, "edit " .. vim.fn.fnameescape(r.file))
+  pcall(api.nvim_win_set_cursor, 0, { r.line, 0 })
+  vim.cmd("normal! zz")
+end
+
+-- Telescope breakpoint picker: fuzzy list + source preview, <CR> opens,
+-- <C-d> deletes. Returns false (caller falls back to the popup) if
+-- telescope.nvim isn't installed.
+local function breakpoints_telescope(recs)
+  local ok_p, pickers = pcall(require, "telescope.pickers")
+  local ok_f, finders = pcall(require, "telescope.finders")
+  local ok_c, tconf = pcall(require, "telescope.config")
+  local ok_a, actions = pcall(require, "telescope.actions")
+  local ok_s, action_state = pcall(require, "telescope.actions.state")
+  if not (ok_p and ok_f and ok_c and ok_a and ok_s) then
+    return false
+  end
+
+  pickers.new({}, {
+    prompt_title = "Breakpoints",
+    finder = finders.new_table({
+      results = recs,
+      entry_maker = function(r)
+        return {
+          value = r,
+          display = string.format("%s:%d   %s", short(r.file), r.line, r.text),
+          ordinal = r.file .. ":" .. r.line,
+          filename = r.file,
+          lnum = r.line,
+        }
+      end,
+    }),
+    sorter = tconf.values.generic_sorter({}),
+    previewer = tconf.values.grep_previewer({}),
+    attach_mappings = function(_, map)
+      map({ "i", "n" }, "<C-d>", function(prompt_bufnr)
+        local sel = action_state.get_selected_entry()
+        actions.close(prompt_bufnr)
+        if sel then
+          remove_bp(sel.value.key)
+          vim.notify(string.format("ardango: breakpoint removed %s:%d",
+            short(sel.value.file), sel.value.line), vim.log.levels.INFO)
+          M.breakpoints({ telescope = true })
+        end
+      end)
+      return true
+    end,
+  }):find()
+  return true
+end
+
+-- DebugBreakpoints: list every breakpoint. In the nui popup: <CR> jumps,
+-- dd deletes the one under the cursor, D clears all. With opts.telescope
+-- (or :Ardango DebugBreakpoints telescope), a Telescope picker with a
+-- source preview instead - <C-d> deletes; falls back to the popup if
+-- telescope.nvim isn't installed.
+function M.breakpoints(opts)
+  opts = opts or {}
+  local recs = bp_records()
+  if #recs == 0 then
+    vim.notify("ardango: no breakpoints set", vim.log.levels.INFO)
+    return
+  end
+
+  if opts.telescope and breakpoints_telescope(recs) then
+    return
+  end
+
+  local lines = {}
+  for i, r in ipairs(recs) do
+    lines[i] = string.format("%s:%d   %s", short(r.file), r.line, r.text)
+  end
+  ui.show_popup(lines, vim.fn.getcwd(), inspect_popup_state, {
+    on_enter = function(_, lnum, close)
+      local r = recs[lnum]
+      if r then
+        close()
+        jump_to_bp(r)
+      end
+    end,
+    keymaps = {
+      dd = function(_, lnum, close)
+        local r = recs[lnum]
+        if not r then
+          return
+        end
+        remove_bp(r.key)
+        vim.notify(string.format("ardango: breakpoint removed %s:%d", short(r.file), r.line),
+          vim.log.levels.INFO)
+        if next(breakpoints) then
+          M.breakpoints(opts) -- re-render (reuses the same popup window)
+        else
+          close()
+        end
+      end,
+      D = function(_, _, close)
+        close()
+        M.clear_breakpoints()
+      end,
+    },
+  })
+end
+
+-- DebugBreakpointClearAll: remove every breakpoint.
+function M.clear_breakpoints()
+  local n = 0
+  for key in pairs(breakpoints) do
+    remove_bp(key)
+    n = n + 1
+  end
+  vim.notify("ardango: cleared " .. n .. " breakpoint(s)", vim.log.levels.INFO)
+end
+
+-- Re-place breakpoint signs when a file is (re)loaded - a wiped/reopened
+-- buffer loses its signs, but the breakpoint is still live.
+api.nvim_create_autocmd("BufReadPost", {
+  pattern = "*.go",
+  callback = function(ev)
+    local file = vim.fn.fnamemodify(ev.file, ":p")
+    for _, bp in pairs(breakpoints) do
+      if bp.file == file then
+        if bp.sign_id then
+          pcall(vim.fn.sign_unplace, SIGN_GROUP, { id = bp.sign_id })
+        end
+        bp.sign_id = vim.fn.sign_place(0, SIGN_GROUP, BP_SIGN, ev.buf, { lnum = bp.line, priority = 10 })
+      end
+    end
+  end,
+})
 
 api.nvim_create_autocmd("VimLeavePre", {
   callback = function()
