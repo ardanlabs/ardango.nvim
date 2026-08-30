@@ -46,9 +46,9 @@ breakpoint sign in the gutter and the stop location marked and jumped to.
 
 - __DebugCurrTest__ / __DebugCurrBenchmark__: start a session on the `Test*`/`Benchmark*` function under the cursor (`dlv test`) and stop on its first line. __DebugPackage__: `dlv debug` the current package (no auto-stop — set a breakpoint first).
 - __DebugContinue__ / __DebugStepOver__ / __DebugStepInto__ / __DebugStepOut__: run / step over / step into / step out (only while halted). `DebugNext`/`DebugStep` are aliases.
-- __DebugBreakpoint__: toggle a breakpoint on the current line. Works with no session running; breakpoints persist across sessions and their signs come back when a file is reopened. `:Ardango DebugBreakpoint <expr>` sets a **conditional** breakpoint.
-- __DebugBreakpoints__: list all breakpoints in a popup — `<CR>` jump, `dd` delete, `D` clear all. `:Ardango DebugBreakpoints telescope` uses a Telescope picker with a source preview. __DebugBreakpointClearAll__ removes them all.
-- __DebugEval__: show the value of an expression — the identifier under the cursor by default (`p`, `p.Name`, `xs[i]`), `:Ardango DebugEval <expr>`, or __DebugEvalVisual__ for the Visual selection — in a floating window, like an LSP hover.
+- __DebugBreakpoint__: toggle a breakpoint on the current line. Works with no session running; breakpoints persist across sessions and their signs come back when a file is reopened. `:ArdangoDebug break <expr>` sets a **conditional** breakpoint.
+- __DebugBreakpoints__: list all breakpoints in a popup — `<CR>` jump, `dd` delete, `D` clear all. `:ArdangoDebug breaks telescope` uses a Telescope picker with a source preview. __DebugBreakpointClearAll__ removes them all.
+- __DebugEval__: show the value of an expression — the identifier under the cursor by default (`p`, `p.Name`, `xs[i]`), `:ArdangoDebug eval <expr>`, or __DebugEvalVisual__ for the Visual selection — in a floating window, like an LSP hover.
 - __DebugLocals__: the selected frame's args and locals, in a popup.
 - __DebugStack__: the goroutine's call stack, in a popup; `<CR>` on a frame **selects** it (cursor + sign move; locals/eval follow).
 - __DebugFrameUp__ / __DebugFrameDown__ / __DebugFrame `<n>`__: walk the call stack — the cursor and sign move to that frame (`▷` for a caller, `▶` for the innermost), and `DebugLocals`/`DebugEval` then evaluate there. Resets on the next step/continue.
@@ -64,13 +64,21 @@ every state change:
 vim.wo.winbar = "%{v:lua.require('ardango').debug_status()}"
 ```
 
-All commands are reachable via `:Ardango Debug…` with tab completion. `dlv` must be
-on `PATH`; a small Go helper is built automatically on first use (needs
-the `go` toolchain), so there's no manual build step.
+Everything is also under **`:ArdangoDebug <sub> [args]`** with tab
+completion — `test`, `continue`, `over`/`into`/`out`, `break [cond]`,
+`eval [expr]`, `stack`, `up`/`down`/`frame <n>`, `goroutines [all]`,
+`goroutine <id>`, `breaks`, `status`, `stop`, … — and **`:ArdangoDebug`**
+with no argument (or `ardango.DebugMenu`) opens a **fuzzy picker** of them
+all (via `vim.ui.select`, so it uses telescope-ui-select / dressing /
+snacks / fzf-lua if you have one).
+
+`dlv` must be on `PATH`; a small Go helper is built automatically on first
+use (needs the `go` toolchain), so there's no manual build step.
 
 ```lua
 local ardango = require "ardango"
 local opts = { noremap = true, silent = true }
+vim.keymap.set('n', '<leader>dd', ardango.DebugMenu, opts)
 vim.keymap.set('n', '<leader>dt', ardango.DebugCurrTest, opts)
 vim.keymap.set('n', '<leader>dB', ardango.DebugCurrBenchmark, opts)
 vim.keymap.set('n', '<leader>dP', ardango.DebugPackage, opts)

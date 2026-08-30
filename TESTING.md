@@ -23,8 +23,9 @@ whatever `nvim` is on your `PATH` is reasonably recent — it warns
 
 This clones `nui.nvim`, `nvim-treesitter`, `plenary.nvim`, and
 `telescope.nvim` into `dev/.deps/` (gitignored), installs the Go
-treesitter parser via `TSInstallSync`, and builds the Delve proxy helper
-(`bin/ardango-dbg`, gitignored) the `Debug*` commands drive. Safe to
+treesitter parser via `TSInstallSync`, and pre-builds the Delve proxy
+helper the debug commands drive into `stdpath("cache")/ardango/` (where
+the plugin also builds it lazily on first `:ArdangoDebug` use). Safe to
 re-run.
 
 The devShell (`shell.nix`) provides `go` and `delve` (`dlv`) — the same
@@ -153,7 +154,7 @@ pulls the Delve module and takes a bit). Run after any change to
 | `DebugContinue` | after the above | stops at `sample_test.go:8`, cursor jumps there, `▶` sign; notify `stopped at sample_test.go:8 (breakpoint, goroutine N)` |
 | `DebugNext` / `DebugStep` / `DebugStepOut` | halted in `TestGreetPass` | each moves the stop location (`DebugStep` into `Greet` in `sample.go`); `DebugContinue` again runs to exit → `program exited (status ...)` + session auto-stops |
 | `DebugEval` | halted, cursor on `p` in `sample.go` `Greet` | float: `ardango/dev/testdata.Person = testdata.Person {Name: "Ardan", ...}` |
-| `:Ardango DebugEval p.Name` | halted | float: `string = "Ardan"` |
+| `:ArdangoDebug eval p.Name` | halted | float: `string = "Ardan"` |
 | `DebugLocals` | halted in `Greet` | popup: `-- args --` / `  p = ...` (no synthetic `~r0`) |
 | `DebugStack` | halted in `Greet` | popup: `sample.go:13:  #0  ...Greet` / `sample_test.go:8:  #1  ...TestGreetPass` / ...; `#0` marked `<- current`; `<CR>` on a frame line jumps to it |
 | `DebugFrameUp` | halted in `Greet` | cursor jumps to `sample_test.go:8`, sign becomes `▷`; notify `frame #1: ...TestGreetPass (sample_test.go:8)`; a following `DebugLocals` shows `TestGreetPass`'s `t` |
@@ -164,21 +165,21 @@ pulls the Delve module and takes a bit). Run after any change to
 | `DebugGoroutine <id>` (a `[waiting]` one from the list) | after the above | notify `switched to goroutine <id> (...)`; sign moves to that goroutine's location; a following `DebugStack` shows that goroutine's stack |
 | `DebugGoroutine 999999` | halted | notify `switch to goroutine 999999: unknown goroutine 999999` |
 | `DebugBreakpoints` | 2-3 breakpoints set across `sample.go`/`sample_test.go` | popup lists `file:line   <source line>`; `<CR>` jumps, `dd` deletes that one and re-renders, `D` clears all |
-| `:Ardango DebugBreakpoints telescope` | same, telescope.nvim on `rtp` | Telescope picker with a source preview; `<C-d>` deletes; without telescope on `rtp` it falls back to the popup |
+| `:ArdangoDebug breaks telescope` | same, telescope.nvim on `rtp` | Telescope picker with a source preview; `<C-d>` deletes; without telescope on `rtp` it falls back to the popup |
 | toggle a breakpoint, then `:e` / wipe+reopen the file | — | the `●` sign comes back (BufReadPost re-places it) |
-| `:Ardango DebugBreakpoint c.name == "case 05"` inside a `TestManyMixed` subtest, then start + continue | — | stops only at the iteration where `c.name == "case 05"` (`DebugEval c.name` confirms); the condition shows as `[if …]` in `DebugBreakpoints` |
+| `:ArdangoDebug break c.name == "case 05"` inside a `TestManyMixed` subtest, then start + continue | — | stops only at the iteration where `c.name == "case 05"` (`:ArdangoDebug eval c.name` confirms); the condition shows as `[if …]` in `DebugBreakpoints` |
 | `<CR>` on a frame line in `DebugStack` | halted | selects that frame (notify `frame #n/N`, sign + cursor move) — not just a cursor jump |
-| `<CR>` on a goroutine line in `DebugGoroutines`; `a` in that popup | halted | `<CR>` switches to it; `a` (or `:Ardango DebugGoroutines all`) expands the `[+N runtime]` collapsed rows |
+| `<CR>` on a goroutine line in `DebugGoroutines`; `a` in that popup | halted | `<CR>` switches to it; `a` (or `:ArdangoDebug goroutines all`) expands the `[+N runtime]` collapsed rows |
 | `DebugEvalVisual` (via an `x`-mode `<Esc>:lua …<CR>` map) over `p.Name` | halted in `Greet` | float shows `string = "Ardan"` |
 | `DebugStop` | mid-session | `debug session stopped`; signs cleared; `pgrep dlv` shows nothing left |
-| any `Debug*` | no session | notify `no debug session — start with :Ardango DebugCurrTest` |
+| any `Debug*` | no session | notify `no debug session — start with :ArdangoDebug test` |
 | `DebugCurrTest` | cursor not inside a `Test*` fn | notify `no Test function under the cursor` |
 | `DebugStop` immediately after `DebugCurrTest` | (before the helper connects) | no error, no orphaned `dlv` (`pgrep dlv`) |
 | `:qa` mid-session | halted or running | Neovim exits within ~½s; `pgrep dlv` / the compiled test binary show nothing left |
 
 Headless probing (no interactive TTY needed) works well here — spawn
 `nvim --clean -u ../init.lua --headless` from `dev/testdata/`, drive with
-`:Ardango Debug…` via `-c`, and `vim.wait(ms, cond)` for the async
+`:ArdangoDebug …` via `-c`, and `vim.wait(ms, cond)` for the async
 notifications. Always end the script with `vim.cmd('qa!')` on every path;
 an error before it leaves headless Neovim hanging.
 

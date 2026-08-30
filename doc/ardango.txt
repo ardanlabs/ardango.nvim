@@ -281,13 +281,13 @@ ardango.DebugBreakpoint({cond})                        *ardango.DebugBreakpoint*
     the next start, and their signs come back when a file is reopened);
     toggling one while the target is running takes effect at the next
     stop. With {cond} - a Go boolean expression, e.g.
-    ":Ardango DebugBreakpoint i > 5" - sets (or re-sets) a conditional
+    ":ArdangoDebug break i > 5" - sets (or re-sets) a conditional
     breakpoint that only stops when the condition holds.
 
 ardango.DebugBreakpoints({opts})                      *ardango.DebugBreakpoints*
     List every breakpoint (file:line + the source line) in a popup:
     <CR> jumps to it, dd deletes the one under the cursor, D clears all.
-    opts.telescope (or :Ardango DebugBreakpoints telescope) opens a
+    opts.telescope (or :ArdangoDebug breaks telescope) opens a
     Telescope picker with a source preview instead - <C-d> deletes;
     falls back to the popup if telescope.nvim isn't installed.
 
@@ -362,19 +362,43 @@ ardango.DebugGoroutines({opts})                        *ardango.DebugGoroutines*
     with the current one marked "←". <CR> on a line switches to that
     goroutine. Pure-runtime goroutines (parked in runtime.*, no user
     frame) are collapsed behind a "[+N runtime]" line; press `a`, or pass
-    opts.all / ":Ardango DebugGoroutines all", to show them.
+    opts.all / ":ArdangoDebug goroutines all", to show them.
 
 ardango.DebugGoroutine({id})                            *ardango.DebugGoroutine*
     Make goroutine {id} (from |ardango.DebugGoroutines|) the selected
     one and land on its first user frame. |ardango.DebugLocals| /
     |ardango.DebugEval| / |ardango.DebugStack| then reflect it.
 
-All of these are also reachable via :Ardango, see |ardango-ex-command|.
-:Ardango DebugEval / :Ardango DebugBreakpoint take the rest of the line
-as the expression / condition (":Ardango DebugEval p.Name",
-":Ardango DebugBreakpoint i > 5"). :Ardango DebugFrame /
-:Ardango DebugGoroutine take the frame number / goroutine id
-(":Ardango DebugFrame 2", ":Ardango DebugGoroutine 34").
+Ex command ~
+                                                          *:ArdangoDebug*
+Every command above is also reachable as :ArdangoDebug {sub} [args], with
+tab completion. {sub} is one of: >
+    test  bench  package        - start a session
+    continue  over  into  out   - run control
+    stop                        - end the session
+    break [cond]                - toggle a breakpoint here (arg: condition)
+    breaks [telescope]          - list breakpoints
+    clearbreaks                 - remove every breakpoint
+    eval [expr]                 - evaluate (arg: expression; default <cexpr>)
+    locals  stack               - inspect the frame
+    up  down  frame {n}         - move the selected stack frame
+    goroutines [all]  goroutine {id}
+    status                      - echo the current status
+    menu                        - the picker (see below)
+<
+Examples: >
+    :ArdangoDebug test
+    :ArdangoDebug break i > 5
+    :ArdangoDebug eval p.Name
+    :ArdangoDebug frame 2
+<
+                                                        *ardango.DebugMenu*
+:ArdangoDebug with no argument (or `menu`, or require("ardango").DebugMenu())
+opens a picker of every debug command with a one-line description, via
+|vim.ui.select()| - so it fuzzy-finds through telescope-ui-select /
+dressing.nvim / snacks / fzf-lua when one is installed, and is a plain
+numbered menu otherwise. Commands that take an argument (eval, break,
+frame, goroutine) prompt for it after selection.
 
 ==============================================================================
 6. Configuration                                          *ardango-configuration*
