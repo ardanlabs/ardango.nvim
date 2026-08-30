@@ -45,14 +45,14 @@ buffer's package without leaving Neovim — one session at a time, with a
 breakpoint sign in the gutter and the stop location marked and jumped to.
 
 - __DebugCurrTest__ / __DebugCurrBenchmark__: start a session on the `Test*`/`Benchmark*` function under the cursor (`dlv test`) and stop on its first line. __DebugPackage__: `dlv debug` the current package (no auto-stop — set a breakpoint first).
-- __DebugContinue__ / __DebugNext__ / __DebugStep__ / __DebugStepOut__: run / step over / step into / step out (only while halted).
-- __DebugBreakpoint__: toggle a breakpoint on the current line. Works with no session running; breakpoints persist across sessions and their signs come back when a file is reopened.
+- __DebugContinue__ / __DebugStepOver__ / __DebugStepInto__ / __DebugStepOut__: run / step over / step into / step out (only while halted). `DebugNext`/`DebugStep` are aliases.
+- __DebugBreakpoint__: toggle a breakpoint on the current line. Works with no session running; breakpoints persist across sessions and their signs come back when a file is reopened. `:Ardango DebugBreakpoint <expr>` sets a **conditional** breakpoint.
 - __DebugBreakpoints__: list all breakpoints in a popup — `<CR>` jump, `dd` delete, `D` clear all. `:Ardango DebugBreakpoints telescope` uses a Telescope picker with a source preview. __DebugBreakpointClearAll__ removes them all.
-- __DebugEval__: show the value of an expression — the identifier under the cursor by default (`p`, `p.Name`, `xs[i]`), or `:Ardango DebugEval <expr>` — in a floating window, like an LSP hover.
+- __DebugEval__: show the value of an expression — the identifier under the cursor by default (`p`, `p.Name`, `xs[i]`), `:Ardango DebugEval <expr>`, or __DebugEvalVisual__ for the Visual selection — in a floating window, like an LSP hover.
 - __DebugLocals__: the selected frame's args and locals, in a popup.
-- __DebugStack__: the goroutine's call stack, in a popup; `<CR>` on a frame jumps to it.
+- __DebugStack__: the goroutine's call stack, in a popup; `<CR>` on a frame **selects** it (cursor + sign move; locals/eval follow).
 - __DebugFrameUp__ / __DebugFrameDown__ / __DebugFrame `<n>`__: walk the call stack — the cursor and sign move to that frame (`▷` for a caller, `▶` for the innermost), and `DebugLocals`/`DebugEval` then evaluate there. Resets on the next step/continue.
-- __DebugGoroutines__: list every goroutine in a popup (location, status, function; current one marked). __DebugGoroutine `<id>`__ switches the selected goroutine — locals/eval/stack then follow it.
+- __DebugGoroutines__: list goroutines in a popup (runtime-only ones collapsed behind `[+N runtime]`, `a` to expand); `<CR>` switches to one. __DebugGoroutine `<id>`__ switches by id — locals/eval/stack then follow it.
 - __DebugStop__: end the session (also automatic on program exit / `:q`).
 
 `require('ardango').debug_status()` returns a one-line status
@@ -76,10 +76,11 @@ vim.keymap.set('n', '<leader>dB', ardango.DebugCurrBenchmark, opts)
 vim.keymap.set('n', '<leader>dP', ardango.DebugPackage, opts)
 vim.keymap.set('n', '<leader>db', ardango.DebugBreakpoint, opts)
 vim.keymap.set('n', '<leader>dc', ardango.DebugContinue, opts)
-vim.keymap.set('n', '<leader>dn', ardango.DebugNext, opts)
-vim.keymap.set('n', '<leader>ds', ardango.DebugStep, opts)
+vim.keymap.set('n', '<leader>dn', ardango.DebugStepOver, opts)
+vim.keymap.set('n', '<leader>ds', ardango.DebugStepInto, opts)
 vim.keymap.set('n', '<leader>do', ardango.DebugStepOut, opts)
 vim.keymap.set('n', '<leader>de', ardango.DebugEval, opts)
+vim.keymap.set('x', '<leader>de', "<Esc>:lua require('ardango').DebugEvalVisual()<CR>", opts)
 vim.keymap.set('n', '<leader>dl', ardango.DebugLocals, opts)
 vim.keymap.set('n', '<leader>dS', ardango.DebugStack, opts)
 vim.keymap.set('n', '<leader>d[', ardango.DebugFrameUp, opts)
@@ -92,8 +93,8 @@ vim.keymap.set('n', '<leader>dq', ardango.DebugStop, opts)
 -- defaults) are easier on the hands:
 vim.keymap.set('n', '<F5>',    ardango.DebugContinue, opts)
 vim.keymap.set('n', '<F9>',    ardango.DebugBreakpoint, opts)
-vim.keymap.set('n', '<F10>',   ardango.DebugNext, opts)
-vim.keymap.set('n', '<F11>',   ardango.DebugStep, opts)
+vim.keymap.set('n', '<F10>',   ardango.DebugStepOver, opts)
+vim.keymap.set('n', '<F11>',   ardango.DebugStepInto, opts)
 vim.keymap.set('n', '<S-F11>', ardango.DebugStepOut, opts)
 ```
 

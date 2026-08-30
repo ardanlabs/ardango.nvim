@@ -71,10 +71,12 @@ Example keymaps: >lua
     vim.keymap.set("n", "<leader>dP", ardango.DebugPackage, opts)
     vim.keymap.set("n", "<leader>db", ardango.DebugBreakpoint, opts)
     vim.keymap.set("n", "<leader>dc", ardango.DebugContinue, opts)
-    vim.keymap.set("n", "<leader>dn", ardango.DebugNext, opts)
-    vim.keymap.set("n", "<leader>ds", ardango.DebugStep, opts)
+    vim.keymap.set("n", "<leader>dn", ardango.DebugStepOver, opts)
+    vim.keymap.set("n", "<leader>ds", ardango.DebugStepInto, opts)
     vim.keymap.set("n", "<leader>do", ardango.DebugStepOut, opts)
     vim.keymap.set("n", "<leader>de", ardango.DebugEval, opts)
+    vim.keymap.set("x", "<leader>de",
+      "<Esc>:lua require('ardango').DebugEvalVisual()<CR>", opts)
     vim.keymap.set("n", "<leader>dl", ardango.DebugLocals, opts)
     vim.keymap.set("n", "<leader>dS", ardango.DebugStack, opts)
     vim.keymap.set("n", "<leader>d[", ardango.DebugFrameUp, opts)
@@ -262,22 +264,25 @@ Stepping (only while the target is halted) ~
 ardango.DebugContinue()                                  *ardango.DebugContinue*
     Run until the next breakpoint or program exit.
 
-ardango.DebugNext()                                          *ardango.DebugNext*
-    Step over the current line.
+ardango.DebugStepOver()                                  *ardango.DebugStepOver*
+    Step over the current line. (Alias: ardango.DebugNext.)
 
-ardango.DebugStep()                                          *ardango.DebugStep*
-    Step into a call on the current line.
+ardango.DebugStepInto()                                  *ardango.DebugStepInto*
+    Step into a call on the current line. (Alias: ardango.DebugStep.)
 
 ardango.DebugStepOut()                                    *ardango.DebugStepOut*
     Run until the current function returns.
 
 Breakpoints ~
 
-ardango.DebugBreakpoint()                              *ardango.DebugBreakpoint*
+ardango.DebugBreakpoint({cond})                        *ardango.DebugBreakpoint*
     Toggle a breakpoint on the current line. Works with no session
     running (breakpoints persist across sessions and are re-applied on
-    the next start); toggling one while the target is running takes
-    effect at the next stop.
+    the next start, and their signs come back when a file is reopened);
+    toggling one while the target is running takes effect at the next
+    stop. With {cond} - a Go boolean expression, e.g.
+    ":Ardango DebugBreakpoint i > 5" - sets (or re-sets) a conditional
+    breakpoint that only stops when the condition holds.
 
 ardango.DebugBreakpoints({opts})                      *ardango.DebugBreakpoints*
     List every breakpoint (file:line + the source line) in a popup:
@@ -311,9 +316,17 @@ ardango.debug_status()                                  *ardango.debug_status*
 Inspecting state (only while the target is halted) ~
 
 ardango.DebugEval({expr})                                    *ardango.DebugEval*
-    Evaluate {expr} in the current frame and show the value in a floating
+    Evaluate {expr} in the selected frame and show the value in a floating
     window, like |vim.lsp.buf.hover()|. With no {expr}, evaluates the
     <cexpr> under the cursor (`p`, `p.Name`, `xs[i]`, ...).
+
+ardango.DebugEvalVisual()                              *ardango.DebugEvalVisual*
+    Like |ardango.DebugEval|, but evaluates the last Visual selection
+    (e.g. `p.Items[i].Name`). Meant for an x-mode keymap that leaves
+    Visual mode first: >lua
+        vim.keymap.set("x", "<leader>de",
+          "<Esc>:lua require('ardango').DebugEvalVisual()<CR>")
+<
 
 ardango.DebugLocals()                                      *ardango.DebugLocals*
     List the selected frame's arguments and local variables in a popup
@@ -322,9 +335,10 @@ ardango.DebugLocals()                                      *ardango.DebugLocals*
     full value.
 
 ardango.DebugStack()                                        *ardango.DebugStack*
-    Show the current goroutine's call stack in a popup. Press <CR> on a
-    frame line to jump to its source; the frame DebugLocals/DebugEval are
-    currently operating in is marked "<- current".
+    Show the current goroutine's call stack in a popup. <CR> on a frame
+    line selects it (cursor + sign move there and DebugLocals/DebugEval
+    then operate in it - same as |ardango.DebugFrame|); the selected
+    frame is marked "←".
 
 Stack frames (only while the target is halted) ~
 
@@ -339,26 +353,28 @@ ardango.DebugFrame({n})                                      *ardango.DebugFrame
     Select frame {n} directly (0 = innermost).
 
 The selected frame resets to 0 on the next
-Continue/Next/Step/StepOut.
+Continue/StepOver/StepInto/StepOut.
 
 Goroutines (only while the target is halted) ~
 
-ardango.DebugGoroutines()                              *ardango.DebugGoroutines*
-    List every goroutine in a popup - user-code location, status,
-    function - with the selected one marked "<- current". <CR> on a line
-    jumps to that source.
+ardango.DebugGoroutines({opts})                        *ardango.DebugGoroutines*
+    List goroutines in a popup - user-code location, status, function -
+    with the current one marked "←". <CR> on a line switches to that
+    goroutine. Pure-runtime goroutines (parked in runtime.*, no user
+    frame) are collapsed behind a "[+N runtime]" line; press `a`, or pass
+    opts.all / ":Ardango DebugGoroutines all", to show them.
 
 ardango.DebugGoroutine({id})                            *ardango.DebugGoroutine*
     Make goroutine {id} (from |ardango.DebugGoroutines|) the selected
-    one. The position sign moves to its location, the frame resets to 0,
-    and |ardango.DebugLocals| / |ardango.DebugEval| / |ardango.DebugStack|
-    then reflect it.
+    one and land on its first user frame. |ardango.DebugLocals| /
+    |ardango.DebugEval| / |ardango.DebugStack| then reflect it.
 
 All of these are also reachable via :Ardango, see |ardango-ex-command|.
-:Ardango DebugEval takes the rest of the line as the expression
-(:Ardango DebugEval p.Name); with none it uses the <cexpr>. :Ardango
-DebugFrame / :Ardango DebugGoroutine take the frame number / goroutine id
-(:Ardango DebugFrame 2, :Ardango DebugGoroutine 34).
+:Ardango DebugEval / :Ardango DebugBreakpoint take the rest of the line
+as the expression / condition (":Ardango DebugEval p.Name",
+":Ardango DebugBreakpoint i > 5"). :Ardango DebugFrame /
+:Ardango DebugGoroutine take the frame number / goroutine id
+(":Ardango DebugFrame 2", ":Ardango DebugGoroutine 34").
 
 ==============================================================================
 6. Configuration                                          *ardango-configuration*

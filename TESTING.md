@@ -85,8 +85,9 @@ the README recommends:
 - `<leader>trf` / `<leader>trs` — remove tag from field / struct
 - `<leader>d…` — the `Debug*` commands: `dt`/`dB`/`dP` start on
   test/benchmark/package, `db` toggle breakpoint, `dm` breakpoint list,
-  `dc`/`dn`/`ds`/`do` continue/next/step/stepout, `de`/`dl`/`dS`
-  eval/locals/stack, `d[`/`d]` frame up/down, `dg` goroutines, `dq` stop
+  `dc`/`dn`/`ds`/`do` continue/step-over/step-into/step-out, `de`
+  eval (`x`-mode: eval the selection), `dl`/`dS` locals/stack, `d[`/`d]`
+  frame up/down, `dg` goroutines, `dq` stop
 
 ## Fixtures (`dev/testdata/`)
 
@@ -165,6 +166,10 @@ pulls the Delve module and takes a bit). Run after any change to
 | `DebugBreakpoints` | 2-3 breakpoints set across `sample.go`/`sample_test.go` | popup lists `file:line   <source line>`; `<CR>` jumps, `dd` deletes that one and re-renders, `D` clears all |
 | `:Ardango DebugBreakpoints telescope` | same, telescope.nvim on `rtp` | Telescope picker with a source preview; `<C-d>` deletes; without telescope on `rtp` it falls back to the popup |
 | toggle a breakpoint, then `:e` / wipe+reopen the file | — | the `●` sign comes back (BufReadPost re-places it) |
+| `:Ardango DebugBreakpoint c.name == "case 05"` inside a `TestManyMixed` subtest, then start + continue | — | stops only at the iteration where `c.name == "case 05"` (`DebugEval c.name` confirms); the condition shows as `[if …]` in `DebugBreakpoints` |
+| `<CR>` on a frame line in `DebugStack` | halted | selects that frame (notify `frame #n/N`, sign + cursor move) — not just a cursor jump |
+| `<CR>` on a goroutine line in `DebugGoroutines`; `a` in that popup | halted | `<CR>` switches to it; `a` (or `:Ardango DebugGoroutines all`) expands the `[+N runtime]` collapsed rows |
+| `DebugEvalVisual` (via an `x`-mode `<Esc>:lua …<CR>` map) over `p.Name` | halted in `Greet` | float shows `string = "Ardan"` |
 | `DebugStop` | mid-session | `debug session stopped`; signs cleared; `pgrep dlv` shows nothing left |
 | any `Debug*` | no session | notify `no debug session — start with :Ardango DebugCurrTest` |
 | `DebugCurrTest` | cursor not inside a `Test*` fn | notify `no Test function under the cursor` |
