@@ -675,8 +675,24 @@ local function debug_menu_telescope(items)
     return false
   end
 
-  pickers.new({}, {
+  -- Size the picker to the command list (bounded), rather than the
+  -- default half-screen.
+  local rows = #items
+  pickers.new({
+    layout_strategy = "center",
+    sorting_strategy = "ascending",
+    layout_config = {
+      height = function(_, _, max_lines)
+        return math.max(3, math.min(rows + 4, max_lines - 6))
+      end,
+      width = function(_, max_columns, _)
+        return math.min(64, max_columns - 8)
+      end,
+      preview_cutoff = 1, -- never reserve space for a preview
+    },
+  }, {
     prompt_title = "Debug",
+    previewer = false,
     finder = finders.new_table({
       results = items,
       entry_maker = function(e)
