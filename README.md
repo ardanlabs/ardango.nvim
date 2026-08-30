@@ -46,7 +46,8 @@ breakpoint sign in the gutter and the stop location marked and jumped to.
 
 - __DebugCurrTest__ / __DebugCurrBenchmark__: start a session on the `Test*`/`Benchmark*` function under the cursor (`dlv test`) and stop on its first line. __DebugPackage__: `dlv debug` the current package (no auto-stop — set a breakpoint first).
 - __DebugContinue__ / __DebugNext__ / __DebugStep__ / __DebugStepOut__: run / step over / step into / step out (only while halted).
-- __DebugBreakpoint__: toggle a breakpoint on the current line. Works with no session running; breakpoints persist across sessions.
+- __DebugBreakpoint__: toggle a breakpoint on the current line. Works with no session running; breakpoints persist across sessions and their signs come back when a file is reopened.
+- __DebugBreakpoints__: list all breakpoints in a popup — `<CR>` jump, `dd` delete, `D` clear all. `:Ardango DebugBreakpoints telescope` uses a Telescope picker with a source preview. __DebugBreakpointClearAll__ removes them all.
 - __DebugEval__: show the value of an expression — the identifier under the cursor by default (`p`, `p.Name`, `xs[i]`), or `:Ardango DebugEval <expr>` — in a floating window, like an LSP hover.
 - __DebugLocals__: the selected frame's args and locals, in a popup.
 - __DebugStack__: the goroutine's call stack, in a popup; `<CR>` on a frame jumps to it.
@@ -75,6 +76,7 @@ vim.keymap.set('n', '<leader>dS', ardango.DebugStack, opts)
 vim.keymap.set('n', '<leader>d[', ardango.DebugFrameUp, opts)
 vim.keymap.set('n', '<leader>d]', ardango.DebugFrameDown, opts)
 vim.keymap.set('n', '<leader>dg', ardango.DebugGoroutines, opts)
+vim.keymap.set('n', '<leader>dm', ardango.DebugBreakpoints, opts)
 vim.keymap.set('n', '<leader>dq', ardango.DebugStop, opts)
 
 -- Run control gets hit constantly — single keys (matching nvim-dap's

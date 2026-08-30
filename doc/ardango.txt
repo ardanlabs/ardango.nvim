@@ -80,6 +80,7 @@ Example keymaps: >lua
     vim.keymap.set("n", "<leader>d[", ardango.DebugFrameUp, opts)
     vim.keymap.set("n", "<leader>d]", ardango.DebugFrameDown, opts)
     vim.keymap.set("n", "<leader>dg", ardango.DebugGoroutines, opts)
+    vim.keymap.set("n", "<leader>dm", ardango.DebugBreakpoints, opts)
     vim.keymap.set("n", "<leader>dq", ardango.DebugStop, opts)
 
     -- Update imports on save.
@@ -277,6 +278,16 @@ ardango.DebugBreakpoint()                              *ardango.DebugBreakpoint*
     running (breakpoints persist across sessions and are re-applied on
     the next start); toggling one while the target is running takes
     effect at the next stop.
+
+ardango.DebugBreakpoints({opts})                      *ardango.DebugBreakpoints*
+    List every breakpoint (file:line + the source line) in a popup:
+    <CR> jumps to it, dd deletes the one under the cursor, D clears all.
+    opts.telescope (or :Ardango DebugBreakpoints telescope) opens a
+    Telescope picker with a source preview instead - <C-d> deletes;
+    falls back to the popup if telescope.nvim isn't installed.
+
+ardango.DebugBreakpointClearAll()              *ardango.DebugBreakpointClearAll*
+    Remove every breakpoint.
 
 Inspecting state (only while the target is halted) ~
 
