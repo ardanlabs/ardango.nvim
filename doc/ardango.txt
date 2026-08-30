@@ -289,6 +289,25 @@ ardango.DebugBreakpoints({opts})                      *ardango.DebugBreakpoints*
 ardango.DebugBreakpointClearAll()              *ardango.DebugBreakpointClearAll*
     Remove every breakpoint.
 
+Status indicator ~
+
+ardango.debug_status()                                  *ardango.debug_status*
+    Returns a compact one-line status string for a statusline / winbar /
+    lualine component - "" when there's no session, otherwise e.g.
+    "[debug: testdata.Greet sample.go:13 g6 #2/5]" (function, short
+    file:line, goroutine, and the frame number only when you've navigated
+    off frame 0), or "[debug: starting]" / "[debug: running]" /
+    "[debug: building helper]" during setup and a continue. >lua
+        vim.o.statusline = "%f %{v:lua.require('ardango').debug_status()} %="
+        -- or a window bar:
+        vim.wo.winbar = "%{v:lua.require('ardango').debug_status()}"
+        -- or a lualine section:
+        { function() return require('ardango').debug_status() end }
+<
+    Every state change nudges |:redrawstatus| and fires a
+    "User ArdangoDebug" autocmd for custom refresh hooks. :Ardango
+    DebugStatus echoes the string as a notification.
+
 Inspecting state (only while the target is halted) ~
 
 ardango.DebugEval({expr})                                    *ardango.DebugEval*

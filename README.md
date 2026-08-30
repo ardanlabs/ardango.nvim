@@ -55,7 +55,16 @@ breakpoint sign in the gutter and the stop location marked and jumped to.
 - __DebugGoroutines__: list every goroutine in a popup (location, status, function; current one marked). __DebugGoroutine `<id>`__ switches the selected goroutine — locals/eval/stack then follow it.
 - __DebugStop__: end the session (also automatic on program exit / `:q`).
 
-All are reachable via `:Ardango Debug…` with tab completion. `dlv` must be
+`require('ardango').debug_status()` returns a one-line status
+(`[debug: testdata.Greet sample.go:13 g6 #2/5]`, or `""` with no session)
+for a statusline / winbar / lualine component — it refreshes itself on
+every state change:
+
+```lua
+vim.wo.winbar = "%{v:lua.require('ardango').debug_status()}"
+```
+
+All commands are reachable via `:Ardango Debug…` with tab completion. `dlv` must be
 on `PATH`; a small Go helper is built automatically on first use (needs
 the `go` toolchain), so there's no manual build step.
 
