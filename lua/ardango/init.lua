@@ -278,15 +278,22 @@ M.DebugPackage = function()
 end
 
 M.DebugContinue = dbg.continue
+M.DebugStepOver = dbg.step_over
+M.DebugStepInto = dbg.step_into
+M.DebugStepOut = dbg.step_out
+-- Back-compat aliases (not tab-completed).
 M.DebugNext = dbg.step_over
 M.DebugStep = dbg.step_into
-M.DebugStepOut = dbg.step_out
+-- DebugBreakpoint toggles a breakpoint at the cursor; with an argument
+-- (:Ardango DebugBreakpoint x > 5) it sets a conditional one.
 M.DebugBreakpoint = dbg.toggle_breakpoint
 M.DebugStop = dbg.stop
 
--- Shows the value of {expr} (or the expression under the cursor) in a
--- floating window, like an LSP hover. Halted target only.
+-- Shows the value of {expr} (the <cexpr> under the cursor by default,
+-- the Visual selection for DebugEvalVisual) in a floating window, like an
+-- LSP hover. Halted target only.
 M.DebugEval = dbg.eval
+M.DebugEvalVisual = dbg.eval_visual
 
 -- DebugLocals lists the current frame's args + local variables in a
 -- popup; DebugStack shows the goroutine's call stack in a popup (press
@@ -591,7 +598,7 @@ local EX_COMMANDS = {
   "RunCurrTest", "RunFileTests", "RunPackageTests", "RunCurrBenchmark",
   "BuildCurrPackage", "RunLastTest", "CopyLastCmd",
   "DebugCurrTest", "DebugCurrBenchmark", "DebugPackage",
-  "DebugBreakpoint", "DebugContinue", "DebugNext", "DebugStep", "DebugStepOut", "DebugStop",
+  "DebugBreakpoint", "DebugContinue", "DebugStepOver", "DebugStepInto", "DebugStepOut", "DebugStop",
   "DebugEval", "DebugLocals", "DebugStack", "DebugFrameUp", "DebugFrameDown", "DebugFrame",
   "DebugGoroutines", "DebugGoroutine", "DebugBreakpoints", "DebugBreakpointClearAll",
   "DebugStatus",
@@ -607,7 +614,7 @@ local DEFAULT_WAIT_MS = 1000
 
 -- Boolean opts recognized as bare words after the subcommand, e.g.
 -- `:Ardango RunCurrTest quickfix verbose`.
-local BOOL_OPTS = { "quickfix", "telescope", "verbose", "dry_run", "float" }
+local BOOL_OPTS = { "quickfix", "telescope", "verbose", "dry_run", "float", "all" }
 
 -- :Ardango <Command> [flag...] - a tab-completable Ex-command layer over
 -- the Lua API above, for discoverability without a keymap. <Command> is
@@ -626,10 +633,15 @@ vim.api.nvim_create_user_command("Ardango", function(cmd_opts)
 
   local rest = { unpack(cmd_opts.fargs, 2) }
 
-  -- DebugEval takes a free-text expression (the rest of the line); with
-  -- none, it falls back to the <cexpr> under the cursor.
+  -- DebugEval / DebugBreakpoint take free text (the rest of the line) -
+  -- an expression / a breakpoint condition. DebugEval with none falls
+  -- back to the <cexpr>; DebugBreakpoint with none is a plain toggle.
   if name == "DebugEval" then
     M.DebugEval(table.concat(rest, " "))
+    return
+  end
+  if name == "DebugBreakpoint" then
+    M.DebugBreakpoint(table.concat(rest, " "))
     return
   end
 
@@ -678,10 +690,10 @@ end, {
     for w in prefix:gmatch("%S+") do
       table.insert(prefix_words, w)
     end
-    -- DebugEval / DebugFrame / DebugGoroutine take a free-text expression
-    -- or a number, not a flag.
-    if prefix_words[2] == "DebugEval" or prefix_words[2] == "DebugFrame"
-        or prefix_words[2] == "DebugGoroutine" then
+    -- These take free text / a number, not a flag.
+    local w2 = prefix_words[2]
+    if w2 == "DebugEval" or w2 == "DebugBreakpoint" or w2 == "DebugFrame"
+        or w2 == "DebugGoroutine" then
       return {}
     end
     local candidates = (#prefix_words <= 1) and EX_COMMANDS or BOOL_OPTS

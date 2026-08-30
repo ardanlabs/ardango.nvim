@@ -50,17 +50,18 @@ vim.keymap.set("x", "<leader>trvf", "<Esc>:lua require('ardango').RemoveTagFromV
 vim.keymap.set("n", "<leader>gh", function() ardango.SignatureInStatusLine(1000) end, opts)
 vim.keymap.set("n", "<leader>gH", function() ardango.SignatureInStatusLine(1000, { float = true }) end, opts)
 
--- Delve debugging (needs `dlv` on PATH + bin/ardango-dbg built by setup.sh).
+-- Delve debugging (needs `dlv` on PATH; the helper builds on first use).
 vim.keymap.set("n", "<leader>dt", ardango.DebugCurrTest, opts)
 vim.keymap.set("n", "<leader>dB", ardango.DebugCurrBenchmark, opts)
 vim.keymap.set("n", "<leader>dP", ardango.DebugPackage, opts)
 vim.keymap.set("n", "<leader>db", ardango.DebugBreakpoint, opts)
 vim.keymap.set("n", "<leader>dc", ardango.DebugContinue, opts)
-vim.keymap.set("n", "<leader>dn", ardango.DebugNext, opts)
-vim.keymap.set("n", "<leader>ds", ardango.DebugStep, opts)
+vim.keymap.set("n", "<leader>dn", ardango.DebugStepOver, opts)
+vim.keymap.set("n", "<leader>ds", ardango.DebugStepInto, opts)
 vim.keymap.set("n", "<leader>do", ardango.DebugStepOut, opts)
 vim.keymap.set("n", "<leader>dq", ardango.DebugStop, opts)
 vim.keymap.set("n", "<leader>de", ardango.DebugEval, opts)
+vim.keymap.set("x", "<leader>de", "<Esc>:lua require('ardango').DebugEvalVisual()<CR>", opts)
 vim.keymap.set("n", "<leader>dl", ardango.DebugLocals, opts)
 vim.keymap.set("n", "<leader>dS", ardango.DebugStack, opts)
 vim.keymap.set("n", "<leader>d[", ardango.DebugFrameUp, opts)

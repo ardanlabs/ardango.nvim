@@ -72,6 +72,7 @@ type request struct {
 	Frame     int    `json:"frame"`     // op "eval"/"locals": stack frame, 0 = innermost
 	Depth     int    `json:"depth"`     // op "stack": max frames
 	Goroutine int64  `json:"goroutine"` // op "switchgoroutine"
+	Cond      string `json:"cond"`      // op "break": optional condition expression
 }
 
 // How much to load when evaluating an explicit expression - generous
@@ -241,7 +242,7 @@ func (s *server) setBreak(req request) {
 		s.fail(req.ID, fmt.Errorf("not connected"))
 		return
 	}
-	bp, err := client.CreateBreakpoint(&api.Breakpoint{File: req.File, Line: req.Line})
+	bp, err := client.CreateBreakpoint(&api.Breakpoint{File: req.File, Line: req.Line, Cond: req.Cond})
 	if err != nil {
 		s.fail(req.ID, err)
 		return
@@ -515,8 +516,9 @@ func (s *server) listGoroutines(req request) {
 			Line:     g.UserCurrentLoc.Line,
 		})
 	}
-	// nextg != 0 means ListGoroutines had more to give past the limit.
-	s.send(response{ID: req.ID, OK: true, Goroutines: out, Truncated: nextg != 0})
+	// nextg > 0 is the resume index when ListGoroutines had more to give
+	// past the limit (it's 0 or -1 when the list is complete).
+	s.send(response{ID: req.ID, OK: true, Goroutines: out, Truncated: nextg > 0})
 }
 
 // switchGoroutine makes req.Goroutine the selected goroutine; the response

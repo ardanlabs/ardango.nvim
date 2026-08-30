@@ -216,7 +216,7 @@ local function sync_breakpoints(s)
   for _, bp in pairs(breakpoints) do
     if not bp.applied then
       bp.applied = true
-      send(s, { op = "break", file = bp.file, line = bp.line }, function(r)
+      send(s, { op = "break", file = bp.file, line = bp.line, cond = bp.cond }, function(r)
         if not r.ok then
           bp.applied = false
           vim.notify("ardango: breakpoint " .. short(bp.file) .. ":" .. bp.line ..
@@ -719,6 +719,23 @@ function M.eval(expr)
   end)
 end
 
+-- Evaluates the last Visual-mode selection (e.g. `p.Items[i].Name`).
+-- Meant for an x-mode keymap that <Esc>s first so the '</'> marks are set.
+function M.eval_visual()
+  local a = vim.fn.getpos("'<")
+  local b = vim.fn.getpos("'>")
+  local ok, region = pcall(vim.fn.getregion, a, b, { type = vim.fn.visualmode() })
+  local text
+  if ok and region and #region > 0 then
+    text = table.concat(region, "")
+  else
+    -- Fallback for older Neovim without getregion: single-line span.
+    local l = vim.fn.getline(a[2])
+    text = l:sub(a[3], b[3])
+  end
+  M.eval(vim.trim(text or ""))
+end
+
 -- Own popup state so DebugLocals/DebugStack don't unmount (or get
 -- unmounted by) the shared test/build results popup.
 local inspect_popup_state = { bufnr = nil, popup = nil }
@@ -791,9 +808,9 @@ local function goto_frame(s, n)
     vim.log.levels.INFO)
 end
 
--- DebugStack: the current goroutine's call stack, in a popup. Frame lines
--- lead with file:line so the popup's <CR> jumps to that source; the frame
--- DebugLocals/DebugEval currently use is marked "←".
+-- DebugStack: the current goroutine's call stack, in a popup. <CR> on a
+-- frame line selects it (DebugLocals/DebugEval then operate there, cursor
+-- + sign move); the current one is marked "←".
 function M.stack()
   local s = session
   if not inspect_ok(s) then
@@ -808,7 +825,14 @@ function M.stack()
     if #lines == 0 then
       lines = { "(empty stack)" }
     end
-    ui.show_popup(lines, vim.fn.getcwd(), inspect_popup_state)
+    ui.show_popup(lines, vim.fn.getcwd(), inspect_popup_state, {
+      on_enter = function(_, lnum, close)
+        if s.frames and s.frames[lnum] then
+          close()
+          goto_frame(s, lnum - 1)
+        end
+      end,
+    })
   end)
 end
 
@@ -886,10 +910,12 @@ local function first_user_frame(frames)
   return 0
 end
 
--- DebugGoroutines: every goroutine with its user-code location, in a
--- popup. Lines lead with file:line so <CR> jumps there; the selected one
--- is marked "←". Switch with :Ardango DebugGoroutine {id}.
-function M.goroutines()
+-- DebugGoroutines: goroutines with their user-code location, in a popup.
+-- <CR> switches to the one under the cursor. Pure-runtime goroutines
+-- (parked in runtime.*, no user frame) are hidden behind a "[+N runtime]"
+-- line - press `a`, or `:Ardango DebugGoroutines all`, to show them.
+function M.goroutines(opts)
+  opts = opts or {}
   local s = session
   if not inspect_ok(s) then
     return
@@ -899,7 +925,18 @@ function M.goroutines()
       vim.notify("ardango: goroutines: " .. (resp.error or "?"), vim.log.levels.WARN)
       return
     end
-    local gs = resp.goroutines or {}
+
+    local gs, hidden = {}, 0
+    for _, g in ipairs(resp.goroutines or {}) do
+      local runtime_only = (not g.file or g.file == "")
+          or (g["function"] or ""):match("^runtime%.") ~= nil
+      if opts.all or g.current or not runtime_only then
+        gs[#gs + 1] = g
+      else
+        hidden = hidden + 1
+      end
+    end
+
     local lines = {}
     for i, g in ipairs(gs) do
       local loc = (g.file ~= "" and g.file ~= nil) and (short(g.file) .. ":" .. g.line .. ":")
@@ -907,13 +944,31 @@ function M.goroutines()
       lines[i] = string.format("%s  goroutine %d  [%s]  %s%s", loc, g.id, g.status,
         g["function"] or "?", g.current and "  ←" or "")
     end
+    if hidden > 0 then
+      lines[#lines + 1] = string.format("  … [+%d runtime]  (a: show all)", hidden)
+    end
     if resp.truncated then
       lines[#lines + 1] = "  … (more goroutines not shown)"
     end
     if #lines == 0 then
       lines = { "(no goroutines)" }
     end
-    ui.show_popup(lines, vim.fn.getcwd(), inspect_popup_state)
+
+    ui.show_popup(lines, vim.fn.getcwd(), inspect_popup_state, {
+      on_enter = function(_, lnum, close)
+        local g = gs[lnum]
+        if g and g.id then
+          close()
+          M.switch_goroutine(g.id)
+        end
+      end,
+      keymaps = {
+        a = function(_, _, close)
+          close()
+          M.goroutines({ all = true })
+        end,
+      },
+    })
   end)
 end
 
@@ -978,27 +1033,36 @@ local function remove_bp(key)
   end
 end
 
-function M.toggle_breakpoint()
+-- Toggle a breakpoint on the current line. With {cond} (a Go boolean
+-- expression), set/replace a conditional breakpoint instead of toggling -
+-- ":Ardango DebugBreakpoint x > 5".
+function M.toggle_breakpoint(cond)
   local file = vim.fn.expand("%:p")
   if file == "" then
     vim.notify("ardango: no file in the current buffer", vim.log.levels.WARN)
     return
   end
+  cond = (cond and cond ~= "") and cond or nil
   local line = api.nvim_win_get_cursor(0)[1]
   local key = bpkey(file, line)
   local bufnr = api.nvim_get_current_buf()
 
   if breakpoints[key] then
+    if not cond then
+      remove_bp(key)
+      vim.notify(string.format("ardango: breakpoint removed %s:%d", short(file), line), vim.log.levels.INFO)
+      return
+    end
+    -- Re-set with the new condition.
     remove_bp(key)
-    vim.notify(string.format("ardango: breakpoint removed %s:%d", short(file), line), vim.log.levels.INFO)
-    return
   end
 
   local sign_id = vim.fn.sign_place(0, SIGN_GROUP, BP_SIGN, bufnr, { lnum = line, priority = 10 })
-  breakpoints[key] = { file = file, line = line, sign_id = sign_id, applied = false }
+  breakpoints[key] = { file = file, line = line, sign_id = sign_id, applied = false, cond = cond }
   sync_breakpoints(session)
   local tail = (session and session.running) and " (applies when the target next stops)" or ""
-  vim.notify(string.format("ardango: breakpoint set %s:%d%s", short(file), line, tail), vim.log.levels.INFO)
+  vim.notify(string.format("ardango: breakpoint set %s:%d%s%s", short(file), line,
+    cond and (" if " .. cond) or "", tail), vim.log.levels.INFO)
 end
 
 -- Sorted list of breakpoint records with the source line read in for
@@ -1021,7 +1085,8 @@ local function bp_records()
       file = bp.file,
       line = bp.line,
       key = key,
-      text = vim.trim(lines[bp.line] or ""),
+      cond = bp.cond,
+      text = vim.trim(lines[bp.line] or "") .. (bp.cond and ("   [if " .. bp.cond .. "]") or ""),
     }
   end
   table.sort(recs, function(a, b)
