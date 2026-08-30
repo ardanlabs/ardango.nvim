@@ -607,17 +607,17 @@ local DEBUG_SUBCOMMANDS = {
   { "into",        "DebugStepInto",           "step into a call" },
   { "out",         "DebugStepOut",            "run until this function returns" },
   { "stop",        "DebugStop",               "end the session" },
-  { "break",       "DebugBreakpoint",         "toggle breakpoint here (arg: condition)", "text" },
-  { "breaks",      "DebugBreakpoints",        "list breakpoints",                        "text" },
+  { "break",       "DebugBreakpoint",         "toggle a breakpoint on this line",       "text" },
+  { "breaks",      "DebugBreakpoints",        "list breakpoints" },
   { "clearbreaks", "DebugBreakpointClearAll", "remove every breakpoint" },
-  { "eval",        "DebugEval",               "evaluate an expression (arg: expr)",     "text" },
+  { "eval",        "DebugEval",               "evaluate the expression under the cursor", "text" },
   { "locals",      "DebugLocals",             "show the frame's args + locals" },
   { "stack",       "DebugStack",              "show the call stack" },
   { "up",          "DebugFrameUp",            "select the caller frame" },
   { "down",        "DebugFrameDown",          "select the callee frame" },
-  { "frame",       "DebugFrame",              "select frame N (arg: number)",           "num" },
-  { "goroutines",  "DebugGoroutines",         "list goroutines",                        "text" },
-  { "goroutine",   "DebugGoroutine",          "switch to goroutine N (arg: id)",        "num" },
+  { "frame",       "DebugFrame",              "select a stack frame by number",         "num" },
+  { "goroutines",  "DebugGoroutines",         "list goroutines" },
+  { "goroutine",   "DebugGoroutine",          "switch to a goroutine by id",            "num" },
   { "status",      "DebugStatus",             "echo the current debug status" },
   { "menu",        "DebugMenu",               "this menu" },
 }
@@ -645,15 +645,17 @@ local function run_debug(entry, argstr)
   end
 end
 
--- Runs a menu-selected entry, prompting for its argument first if it
--- takes one.
+-- Runs a menu-selected entry. Only the "num" commands (frame, goroutine)
+-- need an argument, so only those prompt; "text" args (break condition,
+-- eval expression) are optional and default sensibly, so from the menu
+-- they just run.
 local function menu_pick(e)
   if not e then
     return
   end
-  if e[4] then
+  if e[4] == "num" then
     vim.ui.input({ prompt = e[1] .. ": " }, function(arg)
-      if arg ~= nil then
+      if arg and arg ~= "" then
         run_debug(e, arg)
       end
     end)
