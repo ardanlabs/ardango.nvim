@@ -182,7 +182,8 @@ is `ardango.debug.<name>` (e.g. `over` → `step_over`, `break` →
 | `:ArdangoDebug breaks` | 2-3 breakpoints set across `sample.go`/`sample_test.go` | popup lists `file:line   <source line>`; `<CR>` jumps, `dd` deletes that one and re-renders, `D` clears all |
 | `:ArdangoDebug breaks telescope` | same, telescope.nvim on `rtp` | Telescope picker with a source preview; `<C-d>` deletes; without telescope on `rtp` it falls back to the popup |
 | toggle a breakpoint, then `:e` / wipe+reopen the file | — | the `●` sign comes back (BufReadPost re-places it) |
-| `:ArdangoDebug break` on a blank / comment line, halted session | e.g. `cmd/greet/main.go:14` | notify `breakpoint set …:15 (snapped from line 14)`; `●` lands on the next line with code, not the blank one |
+| `:ArdangoDebug break` on a blank / comment line, **no session** | e.g. `cmd/greet/main.go:3` (a `//` line) | notify `breakpoint set …:7 (snapped from line 3)`; `●` never lands on the comment/blank line |
+| `:ArdangoDebug break` on a blank / comment line, halted session | e.g. `cmd/greet/main.go:14` | notify `breakpoint set …:15 (snapped from line 14)`; `●` lands on the next real statement, not the blank one |
 | `:ArdangoDebug break` where nothing is breakable in range, halted session | e.g. `cmd/greet/main.go:7` (`package main`) | notify `can't break at …:7 — no breakable line found (gave up after 5 tries)` at ERROR level; **no `●` sign left** |
 | `:ArdangoDebug break c.name == "case 05"` inside a `TestManyMixed` subtest, then start + continue | — | stops only at the iteration where `c.name == "case 05"` (`:ArdangoDebug eval c.name` confirms); the condition shows as `[if …]` in `:ArdangoDebug breaks` |
 | `<CR>` on a frame line in the `:ArdangoDebug stack` popup | halted | selects that frame (notify `frame #n/N`, sign + cursor move) — not just a cursor jump |

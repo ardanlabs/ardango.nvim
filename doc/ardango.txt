@@ -290,12 +290,14 @@ ardango.debug.breakpoint({cond})                      *ardango.debug.breakpoint*
     ":ArdangoDebug break i > 5" - sets (or re-sets) a conditional
     breakpoint that only stops when the condition holds.
 
-    When a session is halted the line is checked against dlv straight
-    away: if it has no statement the breakpoint snaps forward to the next
-    line that does (dlv is asked line by line, up to 5 rejections before
-    it gives up), and if nothing in range works the breakpoint is dropped
-    with an error rather than left as a dead sign. Without a session that
-    check waits until one starts.
+    A blank or comment line never gets a sign - the breakpoint skips
+    forward to the next line with code (client-side, so this happens with
+    no session too). When a session is halted the landing line is then
+    checked against dlv: if it still has no statement the breakpoint snaps
+    on to the next one that does (dlv is asked line by line, up to 5
+    rejections before it gives up), and if nothing in range works the
+    breakpoint is dropped with an error rather than left as a dead sign.
+    Without a session that dlv check waits until one starts.
 
 ardango.debug.breakpoints({opts})                    *ardango.debug.breakpoints*
     List every breakpoint (file:line + the source line) in a popup:

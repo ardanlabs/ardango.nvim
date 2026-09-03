@@ -237,13 +237,28 @@ end
 -- (Blank / comment lines are skipped locally and don't count.)
 local MAX_SNAP_TRIES = 5
 
--- Reads bp.file's lines from the loaded buffer, else off disk, else {}.
+-- Reads path's lines from the loaded buffer, else off disk, else {}.
 local function file_lines(path)
   local buf = vim.fn.bufnr(path)
   if buf ~= -1 and api.nvim_buf_is_loaded(buf) then
     return api.nvim_buf_get_lines(buf, 0, -1, false)
   end
   return vim.fn.filereadable(path) == 1 and vim.fn.readfile(path) or {}
+end
+
+-- First line at or after `from` (1-indexed into `lines`) that is neither
+-- blank nor a line comment - the ones dlv can never break on and we don't
+-- need a round-trip to rule out. nil if there's no such line.
+local function next_code_line(lines, from)
+  local n = from
+  while lines[n] ~= nil do
+    local t = vim.trim(lines[n])
+    if t ~= "" and t:sub(1, 2) ~= "//" then
+      return n
+    end
+    n = n + 1
+  end
+  return nil
 end
 
 -- Moves bp (sign + breakpoints[] key) to newline, in place. Returns false
@@ -285,14 +300,7 @@ local function apply_bp(s, bp, cb)
   local lines = file_lines(bp.file)
 
   local function try(n, tries)
-    while lines[n] ~= nil do
-      local t = vim.trim(lines[n])
-      if t == "" or t:sub(1, 2) == "//" then
-        n = n + 1
-      else
-        break
-      end
-    end
+    n = next_code_line(lines, n) or n
     send(s, { op = "break", file = bp.file, line = n, cond = bp.cond }, function(r)
       if r.ok then
         -- dlv reports the line it actually planted the breakpoint on - it
@@ -1171,11 +1179,14 @@ end
 
 -- Toggle a breakpoint on the current line. With {cond} (a Go boolean
 -- expression), set/replace a conditional breakpoint instead of toggling -
--- ":ArdangoDebug break x > 5". With a halted session, dlv validates the
--- line right away: the breakpoint snaps forward to the next real
--- statement if the cursor line has none, or errors out (no sign left) if
--- there's nothing in range. Without a session that check waits until one
--- starts (see sync_breakpoints).
+-- ":ArdangoDebug break x > 5".
+--
+-- A blank / comment line never gets a sign: the breakpoint skips forward
+-- to the next line with code (client-side, so it works with no session).
+-- With a halted session dlv then validates that line too - snapping
+-- further to the next real statement, or dropping the breakpoint with an
+-- error if nothing in range works. Without a session that second check
+-- waits until one starts (see sync_breakpoints).
 function M.toggle_breakpoint(cond)
   local file = vim.fn.expand("%:p")
   if file == "" then
@@ -1232,13 +1243,28 @@ function M.toggle_breakpoint(cond)
     return
   end
 
-  -- No session (or target running): mark optimistically; sync_breakpoints
-  -- validates (and snaps / drops) when a session next halts.
-  breakpoints[key] = { file = file, line = line, sign_id = place_sign(line), applied = false, cond = cond }
+  -- No session (or target running): can't ask dlv, but a blank / comment
+  -- line is unmistakably not code - skip past it client-side so the sign
+  -- never lands somewhere a breakpoint can't go. dlv refines (snaps
+  -- further, or drops it) once a session halts.
+  local target = next_code_line(file_lines(file), line)
+  if not target then
+    vim.notify(string.format("ardango: can't break at %s:%d — only blank / comment lines below",
+      short(file), line), vim.log.levels.ERROR)
+    return
+  end
+  local tkey = bpkey(file, target)
+  if breakpoints[tkey] then
+    vim.notify(string.format("ardango: breakpoint already at %s:%d", short(file), target),
+      vim.log.levels.INFO)
+    return
+  end
+  breakpoints[tkey] = { file = file, line = target, sign_id = place_sign(target), applied = false, cond = cond }
   sync_breakpoints(session)
+  local snapped = target ~= line and (" (snapped from line " .. line .. ")") or ""
   local tail = (session and session.running) and " (applies when the target next stops)" or ""
-  vim.notify(string.format("ardango: breakpoint set %s:%d%s%s", short(file), line,
-    condtxt, tail), vim.log.levels.INFO)
+  vim.notify(string.format("ardango: breakpoint set %s:%d%s%s%s", short(file), target,
+    condtxt, snapped, tail), vim.log.levels.INFO)
 end
 
 -- Sorted list of breakpoint records with the source line read in for
