@@ -76,6 +76,23 @@ all: a Telescope picker if telescope.nvim is installed, otherwise
 `dlv` must be on `PATH`; a small Go helper is built automatically on first
 use (needs the `go` toolchain), so there's no manual build step.
 
+Extra flags and environment for the `dlv`/`go build` child processes go
+through `setup()`:
+
+```lua
+require("ardango").setup({
+  debug = {
+    -- Extra flags for `dlv test` / `dlv debug` (before the `--` separator).
+    dlv_args = { "--build-flags=-tags=integration" },
+    -- Env merged over Neovim's for `dlv` and the helper build. On NixOS,
+    -- cgo hardening breaks Delve's unoptimised build of the target
+    -- ("_FORTIFY_SOURCE requires compiling with optimization"); set
+    -- CGO_ENABLED = "0" (if the target needs no cgo) or CGO_CFLAGS = "-O2".
+    env = { CGO_ENABLED = "0" },
+  },
+})
+```
+
 ```lua
 local ardango = require "ardango"
 local opts = { noremap = true, silent = true }

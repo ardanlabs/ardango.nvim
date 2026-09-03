@@ -417,6 +417,7 @@ ardango.setup({opts})                                          *ardango.setup*
           tag_options = { "omitempty", "-", "required", "unique", "index" },
           debug = {
             dlv_args = { "--build-flags=-tags=integration" },  -- default: {}
+            env = { CGO_ENABLED = "0" },                       -- default: {}
           },
         })
 <
@@ -433,6 +434,14 @@ ardango.setup({opts})                                          *ardango.setup*
     debug.dlv_args is a list of extra flags inserted into the dlv test /
     dlv debug command line (before the -- test-args separator) by the
     Debug* commands - e.g. build tags. Also replaces, not merges.
+
+    debug.env is a table of name=value strings merged over Neovim's
+    environment for the child processes that compile Go - the dlv
+    session and the helper's `go build`. Values must be strings. Mainly
+    for NixOS, where cgo hardening breaks Delve's unoptimised build of
+    the target ("_FORTIFY_SOURCE requires compiling with optimization"):
+    set { CGO_ENABLED = "0" } if the target needs no cgo, otherwise
+    { CGO_CFLAGS = "-O2" }.
 
 ==============================================================================
 7. Health                                                        *ardango-health*

@@ -18,6 +18,13 @@ M.defaults = {
     -- Extra flags for `dlv test` / `dlv debug`, inserted before the `--`
     -- test-args separator, e.g. { "--build-flags=-tags=integration" }.
     dlv_args = {},
+    -- Extra environment variables for the child processes that compile Go
+    -- (the `dlv` session and the helper's `go build`), merged over
+    -- Neovim's environment. Values must be strings. Handy on NixOS, where
+    -- cgo hardening breaks Delve's unoptimised build of the target
+    -- ("_FORTIFY_SOURCE requires compiling with optimization"):
+    --   debug = { env = { CGO_ENABLED = "0" } }
+    env = {},
   },
 }
 
@@ -49,6 +56,18 @@ M.setup = function(opts)
     else
       vim.notify("ardango: setup: debug.dlv_args must be a list; ignoring it", vim.log.levels.WARN)
       M.options.debug.dlv_args = {}
+    end
+  end
+  if opts.debug and opts.debug.env ~= nil then
+    -- A name->value map (an empty table counts - it's also a valid list,
+    -- so check emptiness before vim.islist rejects it).
+    local env = opts.debug.env
+    if type(env) == "table" and (vim.tbl_isempty(env) or not vim.islist(env)) then
+      M.options.debug.env = vim.deepcopy(env)
+    else
+      vim.notify("ardango: setup: debug.env must be a table of name=value strings; ignoring it",
+        vim.log.levels.WARN)
+      M.options.debug.env = {}
     end
   end
 end

@@ -102,6 +102,13 @@ the README recommends:
   and `TestGreetFail` (same, but expect the failure text in a popup by
   default — the quickfix list is opt-in, see below). `BenchmarkGreet` is
   for `RunCurrBenchmark`/`<leader>gb`.
+- `cmd/greet/main.go` — a runnable `package main` (calls `testdata.Greet`
+  in a loop) for `DebugPackage`/`<leader>dP`, which runs `dlv debug` and
+  needs a `main` package — the rest of the fixture is library code.
+- `cmd/cgohello/main.go` — a `main` package that uses cgo (needs a C
+  compiler; always present inside `nix develop`). Only there to reproduce
+  the NixOS `debug.env` scenario — see the last two `DebugPackage` rows in
+  the debug matrix. `go build ./...` still needs cc because of it.
 - `broken_example.go.txt` — inert by default so `go build ./...` stays
   green in the fixture module. To exercise `BuildCurrPackage`'s failure
   path:
@@ -151,6 +158,7 @@ pulls the Delve module and takes a bit). Run after any change to
 | Command | Fixture / cursor position | Expected result |
 |---|---|---|
 | `DebugBreakpoint` then `DebugCurrTest` | breakpoint on `sample_test.go:8`, cursor inside `TestGreetPass` | notify `building debug helper...` (first run only), then `debug session ready`; `●` sign on line 8 |
+| `DebugBreakpoint` on `cmd/greet/main.go:20`, then `DebugPackage` | cursor in `cmd/greet/main.go` | `dlv debug .`; notify `debug session ready`; `DebugContinue` stops at `main.main` line 20 (once per loop iteration), a final `DebugContinue` → `program exited (status 0)` + auto-stop |
 | `DebugContinue` | after the above | stops at `sample_test.go:8`, cursor jumps there, `▶` sign; notify `stopped at sample_test.go:8 (breakpoint, goroutine N)` |
 | `DebugNext` / `DebugStep` / `DebugStepOut` | halted in `TestGreetPass` | each moves the stop location (`DebugStep` into `Greet` in `sample.go`); `DebugContinue` again runs to exit → `program exited (status ...)` + session auto-stops |
 | `DebugEval` | halted, cursor on `p` in `sample.go` `Greet` | float: `ardango/dev/testdata.Person = testdata.Person {Name: "Ardan", ...}` |
@@ -182,6 +190,36 @@ Headless probing (no interactive TTY needed) works well here — spawn
 `:ArdangoDebug …` via `-c`, and `vim.wait(ms, cond)` for the async
 notifications. Always end the script with `vim.cmd('qa!')` on every path;
 an error before it leaves headless Neovim hanging.
+
+#### `debug.env` — the NixOS cgo / `_FORTIFY_SOURCE` case
+
+**Run this one from inside `nix develop`** (the repo's dev shell enables
+`fortify`/`fortify3` hardening — a plain shell usually doesn't, so it
+won't reproduce). Delve compiles the target with optimizations off; the
+Nix `cc` wrapper forces `-D_FORTIFY_SOURCE=2` + `-Werror`, so any cgo in
+the build (here `cmd/cgohello`'s `import "C"`, but in real projects a
+transitive dep or the `net`/`os/user` cgo resolvers) fails to compile:
+
+```
+dlv: # runtime/cgo
+… features.h:435: error: #warning _FORTIFY_SOURCE requires compiling with optimization (-O) [-Werror=cpp]
+cc1: all warnings being treated as errors
+```
+
+→ `dlv exited before the session was ready`. The `debug.env` option
+(`config.lua`, threaded to the `dlv` + helper-build `jobstart`s in
+`debug.lua`) is the fix.
+
+| Setup (via `setup({ debug = { env = … } })`) | Command | Expected result |
+|---|---|---|
+| `env = {}` (default) | `DebugPackage` in `cmd/cgohello/main.go` | notify `dlv: … _FORTIFY_SOURCE requires compiling with optimization …`, then `dlv exited before the session was ready` / `debug session stopped` |
+| `env = { CGO_CFLAGS = "-O2" }` | breakpoint on `cmd/cgohello/main.go:25`, then `DebugPackage` | `debug session ready`; `DebugContinue` stops at `main.main` line 25, a final `DebugContinue` → `program exited (status 0)` + auto-stop |
+| `env = { CGO_ENABLED = "0" }` | `DebugPackage` in `cmd/cgohello/main.go` | still fails — `go build` errors `cannot use import "C"`; `CGO_ENABLED=0` only helps a target that _doesn't_ genuinely need cgo (e.g. `cmd/greet`, where it skips `runtime/cgo` entirely) |
+
+`dev/init.lua` calls `require("ardango")` with no `setup()` args, so drive
+this headless with a `:luafile` scratch script that calls `setup{}` itself
+before `DebugPackage` — same pattern as the `SignatureInStatusLine` stub
+below.
 
 Testing `SignatureInStatusLine` without a real LSP client: `dev/init.lua`
 doesn't attach `gopls` (no `nvim-lspconfig` in `dev/.deps/`), so the

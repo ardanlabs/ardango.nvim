@@ -394,6 +394,21 @@ local function connect_helper(s)
   end)
 end
 
+-- User-configured extra environment for the child processes that compile
+-- Go (the `dlv` session and the helper's `go build`). Returns nil when
+-- none is set, so jobstart just inherits Neovim's environment; otherwise
+-- a name->value map jobstart merges over it. Chiefly for NixOS, where
+-- cgo hardening breaks Delve's unoptimised build of the target
+-- ("_FORTIFY_SOURCE requires compiling with optimization") - a
+-- { CGO_ENABLED = "0" } or { CGO_CFLAGS = "-O2" } sidesteps it.
+local function debug_env()
+  local e = config.options.debug and config.options.debug.env
+  if type(e) == "table" and next(e) then
+    return e
+  end
+  return nil
+end
+
 -- True when HELPER exists and is at least as new as every .go file in
 -- cmd/ardango-dbg (so a plugin update that touches the helper triggers a
 -- rebuild).
@@ -442,6 +457,7 @@ local function ensure_helper(cb)
   vim.notify("ardango: building debug helper...", vim.log.levels.INFO)
   local job = vim.fn.jobstart({ "go", "build", "-o", HELPER, "./cmd/ardango-dbg" }, {
     cwd = PLUGIN_ROOT,
+    env = debug_env(),
     on_stderr = function(_, d)
       local t = table.concat(d or {}, "\n")
       if t:gsub("%s", "") ~= "" then
@@ -518,6 +534,7 @@ start_session = function(spec)
 
   s.dlv_job = vim.fn.jobstart(cmd, {
     cwd = wd,
+    env = debug_env(),
     on_stdout = line_reader(function(line)
       local addr = line:match("API server listening at:%s+(%S+)")
       if addr and not s.addr then
