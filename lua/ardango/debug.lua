@@ -275,8 +275,10 @@ end
 -- Applies bp to s's dlv, snapping forward to the next line that can hold a
 -- breakpoint when bp.line can't. Obviously-blank / comment lines are
 -- skipped locally; every other line costs one dlv round-trip, and after
--- MAX_SNAP_TRIES rejections it gives up. Calls cb(ok, err, exhausted): ok
--- once dlv takes it (bp.line/key/sign already moved to the landing line);
+-- MAX_SNAP_TRIES rejections it gives up. dlv may itself land the
+-- breakpoint past the requested line; the reported line wins. Calls
+-- cb(ok, err, exhausted): ok once dlv takes it (bp.line/key/sign already
+-- moved to the landing line);
 -- exhausted true when the snap ran out of tries (a transient error leaves
 -- exhausted false, so the caller can retry).
 local function apply_bp(s, bp, cb)
@@ -293,8 +295,12 @@ local function apply_bp(s, bp, cb)
     end
     send(s, { op = "break", file = bp.file, line = n, cond = bp.cond }, function(r)
       if r.ok then
-        if n ~= bp.line and not move_bp(bp, n) then
-          reject_bp(bp, "snapped to line " .. n .. ", which already has a breakpoint")
+        -- dlv reports the line it actually planted the breakpoint on - it
+        -- can snap past our n to the next line with instructions. Trust
+        -- that over n, so the sign / key sit where execution really stops.
+        local landed = (r.breakpoint and r.breakpoint.line) or n
+        if landed ~= bp.line and not move_bp(bp, landed) then
+          reject_bp(bp, "snapped to line " .. landed .. ", which already has a breakpoint")
           return
         end
         cb(true)

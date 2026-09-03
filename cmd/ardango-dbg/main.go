@@ -247,8 +247,11 @@ func (s *server) setBreak(req request) {
 		s.fail(req.ID, err)
 		return
 	}
+	// Key by the line dlv actually planted it on, not the one we asked
+	// for: dlv snaps forward to the next line with code, and clearBreak
+	// (and the editor's sign) track that reported line.
 	s.mu.Lock()
-	s.bps[key(req.File, req.Line)] = bp.ID
+	s.bps[key(req.File, bp.Line)] = bp.ID
 	s.mu.Unlock()
 	s.send(response{ID: req.ID, OK: true, Breakpoint: &bpInfo{ID: bp.ID, File: bp.File, Line: bp.Line}})
 }
