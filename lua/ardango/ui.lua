@@ -77,7 +77,12 @@ local result_popup_state = { bufnr = nil, popup = nil }
 
 local function result_buf(state)
   if not state.bufnr or not api.nvim_buf_is_valid(state.bufnr) then
-    state.bufnr = api.nvim_create_buf(false, false)
+    -- listed = false, scratch = true: buftype=nofile, bufhidden=hide,
+    -- noswapfile. A plain (scratch=false) buffer here is buftype="" and
+    -- goes 'modified' as soon as we write lines into it, so it shows up
+    -- in :ls! as a "[No Name]" buffer and can make :q / :qa prompt about
+    -- unsaved changes. The scratch buffer is still reused across runs.
+    state.bufnr = api.nvim_create_buf(false, true)
   end
   return state.bufnr
 end
@@ -114,6 +119,9 @@ M.show_popup = function(data, base_dir, state, opts)
     local bufnr = result_buf(state)
     api.nvim_buf_clear_namespace(bufnr, RESULT_NS, 0, -1)
     api.nvim_buf_set_lines(bufnr, 0, -1, false, data)
+    -- Writing lines flips 'modified'; clear it so the reused buffer never
+    -- reads as unsaved work.
+    vim.bo[bufnr].modified = false
     highlight_results(bufnr, data)
 
     -- Create the popup. border/size/relative/position come from
