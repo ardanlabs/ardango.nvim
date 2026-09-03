@@ -206,9 +206,117 @@ end
 -- breakpoint sync
 -- --------------------------------------------------------------------------
 
+-- True when dlv's error means the line fundamentally can't hold a
+-- breakpoint (blank, comment, `}`, a declaration, ...) rather than a
+-- transient failure (connection lost mid-teardown, ...). Only the former
+-- should make us drop the breakpoint; the latter is worth a retry.
+local function is_unbreakable(err)
+  err = (err or ""):lower()
+  return err:find("could not find", 1, true) ~= nil
+      or err:find("no statement", 1, true) ~= nil
+      or err:find("no line ", 1, true) ~= nil
+      or err:find("not found", 1, true) ~= nil
+end
+
+-- Drops a breakpoint dlv won't accept: unplace its sign, forget it, and
+-- tell the user why. The mark is gone, so the ERROR is the only feedback.
+local function reject_bp(bp, reason)
+  local k = bpkey(bp.file, bp.line)
+  if breakpoints[k] == bp then
+    breakpoints[k] = nil
+  end
+  if bp.sign_id then
+    pcall(vim.fn.sign_unplace, SIGN_GROUP, { id = bp.sign_id })
+  end
+  vim.notify(string.format("ardango: can't break at %s:%d — %s",
+    short(bp.file), bp.line, reason or "?"), vim.log.levels.ERROR)
+end
+
+-- How many "no statement on that line" replies from dlv to tolerate -
+-- stepping forward one line each time - before giving up on a breakpoint.
+-- (Blank / comment lines are skipped locally and don't count.)
+local MAX_SNAP_TRIES = 5
+
+-- Reads bp.file's lines from the loaded buffer, else off disk, else {}.
+local function file_lines(path)
+  local buf = vim.fn.bufnr(path)
+  if buf ~= -1 and api.nvim_buf_is_loaded(buf) then
+    return api.nvim_buf_get_lines(buf, 0, -1, false)
+  end
+  return vim.fn.filereadable(path) == 1 and vim.fn.readfile(path) or {}
+end
+
+-- Moves bp (sign + breakpoints[] key) to newline, in place. Returns false
+-- if a different breakpoint already sits there.
+local function move_bp(bp, newline)
+  local newk = bpkey(bp.file, newline)
+  if breakpoints[newk] and breakpoints[newk] ~= bp then
+    return false
+  end
+  local oldk = bpkey(bp.file, bp.line)
+  if breakpoints[oldk] == bp then
+    breakpoints[oldk] = nil
+  end
+  bp.line = newline
+  breakpoints[newk] = bp
+  local buf = vim.fn.bufnr(bp.file)
+  if bp.sign_id then
+    pcall(vim.fn.sign_unplace, SIGN_GROUP, { id = bp.sign_id })
+    bp.sign_id = nil
+  end
+  if buf ~= -1 and api.nvim_buf_is_loaded(buf) then
+    local ok, sid = pcall(vim.fn.sign_place, 0, SIGN_GROUP, BP_SIGN, buf,
+      { lnum = newline, priority = 10 })
+    bp.sign_id = ok and sid or nil
+  end
+  return true
+end
+
+-- Applies bp to s's dlv, snapping forward to the next line that can hold a
+-- breakpoint when bp.line can't. Obviously-blank / comment lines are
+-- skipped locally; every other line costs one dlv round-trip, and after
+-- MAX_SNAP_TRIES rejections it gives up. Calls cb(ok, err, exhausted): ok
+-- once dlv takes it (bp.line/key/sign already moved to the landing line);
+-- exhausted true when the snap ran out of tries (a transient error leaves
+-- exhausted false, so the caller can retry).
+local function apply_bp(s, bp, cb)
+  local lines = file_lines(bp.file)
+
+  local function try(n, tries)
+    while lines[n] ~= nil do
+      local t = vim.trim(lines[n])
+      if t == "" or t:sub(1, 2) == "//" then
+        n = n + 1
+      else
+        break
+      end
+    end
+    send(s, { op = "break", file = bp.file, line = n, cond = bp.cond }, function(r)
+      if r.ok then
+        if n ~= bp.line and not move_bp(bp, n) then
+          reject_bp(bp, "snapped to line " .. n .. ", which already has a breakpoint")
+          return
+        end
+        cb(true)
+      elseif not is_unbreakable(r.error) then
+        cb(false, r.error, false)
+      elseif tries + 1 >= MAX_SNAP_TRIES then
+        cb(false, "no breakable line found (gave up after " .. MAX_SNAP_TRIES .. " tries)", true)
+      else
+        try(n + 1, tries + 1)
+      end
+    end)
+  end
+
+  try(bp.line, 0)
+end
+
 -- Pushes any not-yet-applied breakpoints to s's dlv. No-op while the
 -- target is running (dlv can only set breakpoints on a halted target) -
--- they get flushed the next time it stops.
+-- they get flushed the next time it stops. A breakpoint on an unbreakable
+-- line snaps forward to the next statement (see apply_bp); if there's no
+-- statement in range it's dropped (sign and all), and any other failure
+-- just leaves it un-applied to retry on the next stop.
 local function sync_breakpoints(s)
   if not s or not s.ready or s.running then
     return
@@ -216,11 +324,16 @@ local function sync_breakpoints(s)
   for _, bp in pairs(breakpoints) do
     if not bp.applied then
       bp.applied = true
-      send(s, { op = "break", file = bp.file, line = bp.line, cond = bp.cond }, function(r)
-        if not r.ok then
+      apply_bp(s, bp, function(ok, err, exhausted)
+        if ok then
+          return
+        end
+        if exhausted then
+          reject_bp(bp, err)
+        else
           bp.applied = false
           vim.notify("ardango: breakpoint " .. short(bp.file) .. ":" .. bp.line ..
-            " rejected: " .. (r.error or "?"), vim.log.levels.WARN)
+            " not set — " .. (err or "?"), vim.log.levels.WARN)
         end
       end)
     end
@@ -1052,7 +1165,11 @@ end
 
 -- Toggle a breakpoint on the current line. With {cond} (a Go boolean
 -- expression), set/replace a conditional breakpoint instead of toggling -
--- ":ArdangoDebug break x > 5".
+-- ":ArdangoDebug break x > 5". With a halted session, dlv validates the
+-- line right away: the breakpoint snaps forward to the next real
+-- statement if the cursor line has none, or errors out (no sign left) if
+-- there's nothing in range. Without a session that check waits until one
+-- starts (see sync_breakpoints).
 function M.toggle_breakpoint(cond)
   local file = vim.fn.expand("%:p")
   if file == "" then
@@ -1074,12 +1191,48 @@ function M.toggle_breakpoint(cond)
     remove_bp(key)
   end
 
-  local sign_id = vim.fn.sign_place(0, SIGN_GROUP, BP_SIGN, bufnr, { lnum = line, priority = 10 })
-  breakpoints[key] = { file = file, line = line, sign_id = sign_id, applied = false, cond = cond }
+  local function place_sign(lnum)
+    local ok, sid = pcall(vim.fn.sign_place, 0, SIGN_GROUP, BP_SIGN, bufnr,
+      { lnum = lnum, priority = 10 })
+    return ok and sid or nil
+  end
+  local condtxt = cond and (" if " .. cond) or ""
+
+  -- Halted session: let dlv place it (and snap / reject) before we mark
+  -- anything, so a bad line never leaves a stray sign.
+  if session and session.ready and not session.running then
+    local bp = { file = file, line = line, sign_id = nil, applied = true, cond = cond }
+    breakpoints[key] = bp
+    apply_bp(session, bp, function(ok, err, exhausted)
+      if breakpoints[bpkey(bp.file, bp.line)] ~= bp then
+        return -- already removed (toggled off, or a snap collision)
+      end
+      if ok then
+        if not bp.sign_id then
+          bp.sign_id = place_sign(bp.line)
+        end
+        local moved = bp.line ~= line and (" (snapped from line " .. line .. ")") or ""
+        vim.notify(string.format("ardango: breakpoint set %s:%d%s%s",
+          short(bp.file), bp.line, condtxt, moved), vim.log.levels.INFO)
+      elseif exhausted then
+        reject_bp(bp, err)
+      else
+        bp.applied = false
+        bp.sign_id = bp.sign_id or place_sign(bp.line)
+        vim.notify("ardango: breakpoint " .. short(bp.file) .. ":" .. bp.line ..
+          " not set — " .. (err or "?"), vim.log.levels.WARN)
+      end
+    end)
+    return
+  end
+
+  -- No session (or target running): mark optimistically; sync_breakpoints
+  -- validates (and snaps / drops) when a session next halts.
+  breakpoints[key] = { file = file, line = line, sign_id = place_sign(line), applied = false, cond = cond }
   sync_breakpoints(session)
   local tail = (session and session.running) and " (applies when the target next stops)" or ""
   vim.notify(string.format("ardango: breakpoint set %s:%d%s%s", short(file), line,
-    cond and (" if " .. cond) or "", tail), vim.log.levels.INFO)
+    condtxt, tail), vim.log.levels.INFO)
 end
 
 -- Sorted list of breakpoint records with the source line read in for
