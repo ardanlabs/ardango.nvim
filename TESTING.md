@@ -32,7 +32,7 @@ The devShell (`shell.nix`) provides `go` and `delve` (`dlv`) — the same
 Delve version the helper is built against — alongside Neovim, so nothing
 Go-related needs to be on the host `PATH`. Outside the devShell the
 helper build is skipped with a warning if `go` isn't found, and the
-`Debug*` commands additionally need `dlv` on `PATH` at runtime.
+`:ArdangoDebug` commands additionally need `dlv` on `PATH` at runtime.
 
 `dev/setup.sh` pins `nvim-treesitter` to its **`master`** branch, not
 `main`. `main` is a rewrite that needs a much newer Neovim; `master` has
@@ -84,7 +84,7 @@ the README recommends:
 - `<leader>gr` — `RunLastTest`
 - `<leader>taf` / `<leader>tas` — add tag to field / struct
 - `<leader>trf` / `<leader>trs` — remove tag from field / struct
-- `<leader>d…` — the `Debug*` commands: `dt`/`dB`/`dP` start on
+- `<leader>d…` — the `ardango.debug.*` commands: `dt`/`dB`/`dP` start on
   test/benchmark/package, `db` toggle breakpoint, `dm` breakpoint list,
   `dc`/`dn`/`ds`/`do` continue/step-over/step-into/step-out, `de`
   eval (`x`-mode: eval the selection), `dl`/`dS` locals/stack, `d[`/`d]`
@@ -103,12 +103,14 @@ the README recommends:
   default — the quickfix list is opt-in, see below). `BenchmarkGreet` is
   for `RunCurrBenchmark`/`<leader>gb`.
 - `cmd/greet/main.go` — a runnable `package main` (calls `testdata.Greet`
-  in a loop) for `DebugPackage`/`<leader>dP`, which runs `dlv debug` and
-  needs a `main` package — the rest of the fixture is library code.
+  in a loop) for `:ArdangoDebug package` / `<leader>dP`, which runs `dlv
+  debug` and needs a `main` package — the rest of the fixture is library
+  code.
 - `cmd/cgohello/main.go` — a `main` package that uses cgo (needs a C
   compiler; always present inside `nix develop`). Only there to reproduce
-  the NixOS `debug.env` scenario — see the last two `DebugPackage` rows in
-  the debug matrix. `go build ./...` still needs cc because of it.
+  the NixOS `debug.env` scenario — see the last two `:ArdangoDebug
+  package` rows in the debug matrix. `go build ./...` still needs cc
+  because of it.
 - `broken_example.go.txt` — inert by default so `go build ./...` stays
   green in the fixture module. To exercise `BuildCurrPackage`'s failure
   path:
@@ -150,39 +152,44 @@ or `lua/ardango/struct_tag.lua`:
 ### Debugging (Delve) — `lua/ardango/debug.lua`, `cmd/ardango-dbg/`
 
 Needs `dlv` on `PATH` and the helper built (`dev/setup.sh` pre-builds it
-into `stdpath("cache")/ardango/ardango-dbg`; otherwise the first `Debug*`
-call builds it — `go build ./cmd/ardango-dbg` — which on a cold machine
-pulls the Delve module and takes a bit). Run after any change to
-`debug.lua`, `cmd/ardango-dbg/main.go`, or `ui.lua`'s `show_popup`.
+into `stdpath("cache")/ardango/ardango-dbg`; otherwise the first
+`:ArdangoDebug` call builds it — `go build ./cmd/ardango-dbg` — which on a
+cold machine pulls the Delve module and takes a bit). Run after any
+change to `debug.lua`, `cmd/ardango-dbg/main.go`, or `ui.lua`'s
+`show_popup`.
+
+Commands are written as `:ArdangoDebug <sub>` below; the equivalent Lua
+is `ardango.debug.<name>` (e.g. `over` → `step_over`, `break` →
+`breakpoint`).
 
 | Command | Fixture / cursor position | Expected result |
 |---|---|---|
-| `DebugBreakpoint` then `DebugCurrTest` | breakpoint on `sample_test.go:8`, cursor inside `TestGreetPass` | notify `building debug helper...` (first run only), then `debug session ready`; `●` sign on line 8 |
-| `DebugBreakpoint` on `cmd/greet/main.go:20`, then `DebugPackage` | cursor in `cmd/greet/main.go` | `dlv debug .`; notify `debug session ready`; `DebugContinue` stops at `main.main` line 20 (once per loop iteration), a final `DebugContinue` → `program exited (status 0)` + auto-stop |
-| `DebugContinue` | after the above | stops at `sample_test.go:8`, cursor jumps there, `▶` sign; notify `stopped at sample_test.go:8 (breakpoint, goroutine N)` |
-| `DebugNext` / `DebugStep` / `DebugStepOut` | halted in `TestGreetPass` | each moves the stop location (`DebugStep` into `Greet` in `sample.go`); `DebugContinue` again runs to exit → `program exited (status ...)` + session auto-stops |
-| `DebugEval` | halted, cursor on `p` in `sample.go` `Greet` | float: `ardango/dev/testdata.Person = testdata.Person {Name: "Ardan", ...}` |
+| `:ArdangoDebug break` then `:ArdangoDebug test` | breakpoint on `sample_test.go:8`, cursor inside `TestGreetPass` | notify `building debug helper...` (first run only), then `debug session ready`; `●` sign on line 8 |
+| `:ArdangoDebug break` on `cmd/greet/main.go:20`, then `:ArdangoDebug package` | cursor in `cmd/greet/main.go` | `dlv debug .`; notify `debug session ready`; `:ArdangoDebug continue` stops at `main.main` line 20 (once per loop iteration), a final `continue` → `program exited (status 0)` + auto-stop |
+| `:ArdangoDebug continue` | after the above | stops at `sample_test.go:8`, cursor jumps there, `▶` sign; notify `stopped at sample_test.go:8 (breakpoint, goroutine N)` |
+| `:ArdangoDebug over` / `into` / `out` | halted in `TestGreetPass` | each moves the stop location (`into` steps into `Greet` in `sample.go`); `continue` again runs to exit → `program exited (status ...)` + session auto-stops |
+| `:ArdangoDebug eval` | halted, cursor on `p` in `sample.go` `Greet` | float: `ardango/dev/testdata.Person = testdata.Person {Name: "Ardan", ...}` |
 | `:ArdangoDebug eval p.Name` | halted | float: `string = "Ardan"` |
-| `DebugLocals` | halted in `Greet` | popup: `-- args --` / `  p = ...` (no synthetic `~r0`) |
-| `DebugStack` | halted in `Greet` | popup: `sample.go:13:  #0  ...Greet` / `sample_test.go:8:  #1  ...TestGreetPass` / ...; `#0` marked `<- current`; `<CR>` on a frame line jumps to it |
-| `DebugFrameUp` | halted in `Greet` | cursor jumps to `sample_test.go:8`, sign becomes `▷`; notify `frame #1: ...TestGreetPass (sample_test.go:8)`; a following `DebugLocals` shows `TestGreetPass`'s `t` |
-| `DebugFrameDown` (back to 0) / `DebugFrame 0` | after the above | cursor back on `sample.go:13`, sign back to `▶`; `DebugFrameDown` again → notify `already at the innermost frame` |
-| `DebugFrame 99` | halted | notify `no frame #99 (stack is N deep)` |
-| any `DebugContinue`/`Next`/`Step`/`StepOut` | after navigating frames | selected frame resets to 0 (sign back to `▶` at the new stop) |
-| `DebugGoroutines` | halted (break at `sample_test.go:60` in a `TestManyMixed` subtest) | popup lists several goroutines (`file:line:  goroutine N  [status]  func`); the subtest's is `[running]` and marked `<- current`, the parent `TestManyMixed` one is `[waiting]` on `testing.(*T).Run` |
-| `DebugGoroutine <id>` (a `[waiting]` one from the list) | after the above | notify `switched to goroutine <id> (...)`; sign moves to that goroutine's location; a following `DebugStack` shows that goroutine's stack |
-| `DebugGoroutine 999999` | halted | notify `switch to goroutine 999999: unknown goroutine 999999` |
-| `DebugBreakpoints` | 2-3 breakpoints set across `sample.go`/`sample_test.go` | popup lists `file:line   <source line>`; `<CR>` jumps, `dd` deletes that one and re-renders, `D` clears all |
+| `:ArdangoDebug locals` | halted in `Greet` | popup: `-- args --` / `  p = ...` (no synthetic `~r0`) |
+| `:ArdangoDebug stack` | halted in `Greet` | popup: `sample.go:13:  #0  ...Greet` / `sample_test.go:8:  #1  ...TestGreetPass` / ...; `#0` marked `<- current`; `<CR>` on a frame line jumps to it |
+| `:ArdangoDebug up` | halted in `Greet` | cursor jumps to `sample_test.go:8`, sign becomes `▷`; notify `frame #1: ...TestGreetPass (sample_test.go:8)`; a following `:ArdangoDebug locals` shows `TestGreetPass`'s `t` |
+| `:ArdangoDebug down` (back to 0) / `:ArdangoDebug frame 0` | after the above | cursor back on `sample.go:13`, sign back to `▶`; `down` again → notify `already at the innermost frame` |
+| `:ArdangoDebug frame 99` | halted | notify `no frame #99 (stack is N deep)` |
+| any `:ArdangoDebug continue`/`over`/`into`/`out` | after navigating frames | selected frame resets to 0 (sign back to `▶` at the new stop) |
+| `:ArdangoDebug goroutines` | halted (break at `sample_test.go:60` in a `TestManyMixed` subtest) | popup lists several goroutines (`file:line:  goroutine N  [status]  func`); the subtest's is `[running]` and marked `<- current`, the parent `TestManyMixed` one is `[waiting]` on `testing.(*T).Run` |
+| `:ArdangoDebug goroutine <id>` (a `[waiting]` one from the list) | after the above | notify `switched to goroutine <id> (...)`; sign moves to that goroutine's location; a following `:ArdangoDebug stack` shows that goroutine's stack |
+| `:ArdangoDebug goroutine 999999` | halted | notify `switch to goroutine 999999: unknown goroutine 999999` |
+| `:ArdangoDebug breaks` | 2-3 breakpoints set across `sample.go`/`sample_test.go` | popup lists `file:line   <source line>`; `<CR>` jumps, `dd` deletes that one and re-renders, `D` clears all |
 | `:ArdangoDebug breaks telescope` | same, telescope.nvim on `rtp` | Telescope picker with a source preview; `<C-d>` deletes; without telescope on `rtp` it falls back to the popup |
 | toggle a breakpoint, then `:e` / wipe+reopen the file | — | the `●` sign comes back (BufReadPost re-places it) |
-| `:ArdangoDebug break c.name == "case 05"` inside a `TestManyMixed` subtest, then start + continue | — | stops only at the iteration where `c.name == "case 05"` (`:ArdangoDebug eval c.name` confirms); the condition shows as `[if …]` in `DebugBreakpoints` |
-| `<CR>` on a frame line in `DebugStack` | halted | selects that frame (notify `frame #n/N`, sign + cursor move) — not just a cursor jump |
-| `<CR>` on a goroutine line in `DebugGoroutines`; `a` in that popup | halted | `<CR>` switches to it; `a` (or `:ArdangoDebug goroutines all`) expands the `[+N runtime]` collapsed rows |
-| `DebugEvalVisual` (via an `x`-mode `<Esc>:lua …<CR>` map) over `p.Name` | halted in `Greet` | float shows `string = "Ardan"` |
-| `DebugStop` | mid-session | `debug session stopped`; signs cleared; `pgrep dlv` shows nothing left |
-| any `Debug*` | no session | notify `no debug session — start with :ArdangoDebug test` |
-| `DebugCurrTest` | cursor not inside a `Test*` fn | notify `no Test function under the cursor` |
-| `DebugStop` immediately after `DebugCurrTest` | (before the helper connects) | no error, no orphaned `dlv` (`pgrep dlv`) |
+| `:ArdangoDebug break c.name == "case 05"` inside a `TestManyMixed` subtest, then start + continue | — | stops only at the iteration where `c.name == "case 05"` (`:ArdangoDebug eval c.name` confirms); the condition shows as `[if …]` in `:ArdangoDebug breaks` |
+| `<CR>` on a frame line in the `:ArdangoDebug stack` popup | halted | selects that frame (notify `frame #n/N`, sign + cursor move) — not just a cursor jump |
+| `<CR>` on a goroutine line in the `:ArdangoDebug goroutines` popup; `a` in that popup | halted | `<CR>` switches to it; `a` (or `:ArdangoDebug goroutines all`) expands the `[+N runtime]` collapsed rows |
+| `ardango.debug.eval_visual` (via an `x`-mode `<Esc>:lua …<CR>` map) over `p.Name` | halted in `Greet` | float shows `string = "Ardan"` |
+| `:ArdangoDebug stop` | mid-session | `debug session stopped`; signs cleared; `pgrep dlv` shows nothing left |
+| any `:ArdangoDebug` control | no session | notify `no debug session — start with :ArdangoDebug test` |
+| `:ArdangoDebug test` | cursor not inside a `Test*` fn | notify `no Test function under the cursor` |
+| `:ArdangoDebug stop` immediately after `:ArdangoDebug test` | (before the helper connects) | no error, no orphaned `dlv` (`pgrep dlv`) |
 | `:qa` mid-session | halted or running | Neovim exits within ~½s; `pgrep dlv` / the compiled test binary show nothing left |
 
 Headless probing (no interactive TTY needed) works well here — spawn
@@ -212,14 +219,14 @@ cc1: all warnings being treated as errors
 
 | Setup (via `setup({ debug = { env = … } })`) | Command | Expected result |
 |---|---|---|
-| `env = {}` (default) | `DebugPackage` in `cmd/cgohello/main.go` | notify `dlv: … _FORTIFY_SOURCE requires compiling with optimization …`, then `dlv exited before the session was ready` / `debug session stopped` |
-| `env = { CGO_CFLAGS = "-O2" }` | breakpoint on `cmd/cgohello/main.go:25`, then `DebugPackage` | `debug session ready`; `DebugContinue` stops at `main.main` line 25, a final `DebugContinue` → `program exited (status 0)` + auto-stop |
-| `env = { CGO_ENABLED = "0" }` | `DebugPackage` in `cmd/cgohello/main.go` | still fails — `go build` errors `cannot use import "C"`; `CGO_ENABLED=0` only helps a target that _doesn't_ genuinely need cgo (e.g. `cmd/greet`, where it skips `runtime/cgo` entirely) |
+| `env = {}` (default) | `:ArdangoDebug package` in `cmd/cgohello/main.go` | notify `dlv: … _FORTIFY_SOURCE requires compiling with optimization …`, then `dlv exited before the session was ready` / `debug session stopped` |
+| `env = { CGO_CFLAGS = "-O2" }` | breakpoint on `cmd/cgohello/main.go:25`, then `:ArdangoDebug package` | `debug session ready`; `:ArdangoDebug continue` stops at `main.main` line 25, a final `continue` → `program exited (status 0)` + auto-stop |
+| `env = { CGO_ENABLED = "0" }` | `:ArdangoDebug package` in `cmd/cgohello/main.go` | still fails — `go build` errors `cannot use import "C"`; `CGO_ENABLED=0` only helps a target that _doesn't_ genuinely need cgo (e.g. `cmd/greet`, where it skips `runtime/cgo` entirely) |
 
 `dev/init.lua` calls `require("ardango")` with no `setup()` args, so drive
 this headless with a `:luafile` scratch script that calls `setup{}` itself
-before `DebugPackage` — same pattern as the `SignatureInStatusLine` stub
-below.
+before `:ArdangoDebug package` — same pattern as the `SignatureInStatusLine`
+stub below.
 
 Testing `SignatureInStatusLine` without a real LSP client: `dev/init.lua`
 doesn't attach `gopls` (no `nvim-lspconfig` in `dev/.deps/`), so the

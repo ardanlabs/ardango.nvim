@@ -67,23 +67,23 @@ Example keymaps: >lua
       "<Esc>:lua require('ardango').RemoveTagFromVisualFields()<CR>", { buffer = 0 })
 
     -- Debugging (Delve) - see |ardango-debug|.
-    vim.keymap.set("n", "<leader>dt", ardango.DebugCurrTest, opts)
-    vim.keymap.set("n", "<leader>dP", ardango.DebugPackage, opts)
-    vim.keymap.set("n", "<leader>db", ardango.DebugBreakpoint, opts)
-    vim.keymap.set("n", "<leader>dc", ardango.DebugContinue, opts)
-    vim.keymap.set("n", "<leader>dn", ardango.DebugStepOver, opts)
-    vim.keymap.set("n", "<leader>ds", ardango.DebugStepInto, opts)
-    vim.keymap.set("n", "<leader>do", ardango.DebugStepOut, opts)
-    vim.keymap.set("n", "<leader>de", ardango.DebugEval, opts)
+    vim.keymap.set("n", "<leader>dt", ardango.debug.curr_test, opts)
+    vim.keymap.set("n", "<leader>dP", ardango.debug.curr_package, opts)
+    vim.keymap.set("n", "<leader>db", ardango.debug.breakpoint, opts)
+    vim.keymap.set("n", "<leader>dc", ardango.debug.continue, opts)
+    vim.keymap.set("n", "<leader>dn", ardango.debug.step_over, opts)
+    vim.keymap.set("n", "<leader>ds", ardango.debug.step_into, opts)
+    vim.keymap.set("n", "<leader>do", ardango.debug.step_out, opts)
+    vim.keymap.set("n", "<leader>de", ardango.debug.eval, opts)
     vim.keymap.set("x", "<leader>de",
-      "<Esc>:lua require('ardango').DebugEvalVisual()<CR>", opts)
-    vim.keymap.set("n", "<leader>dl", ardango.DebugLocals, opts)
-    vim.keymap.set("n", "<leader>dS", ardango.DebugStack, opts)
-    vim.keymap.set("n", "<leader>d[", ardango.DebugFrameUp, opts)
-    vim.keymap.set("n", "<leader>d]", ardango.DebugFrameDown, opts)
-    vim.keymap.set("n", "<leader>dg", ardango.DebugGoroutines, opts)
-    vim.keymap.set("n", "<leader>dm", ardango.DebugBreakpoints, opts)
-    vim.keymap.set("n", "<leader>dq", ardango.DebugStop, opts)
+      "<Esc>:lua require('ardango').debug.eval_visual()<CR>", opts)
+    vim.keymap.set("n", "<leader>dl", ardango.debug.locals, opts)
+    vim.keymap.set("n", "<leader>dS", ardango.debug.stack, opts)
+    vim.keymap.set("n", "<leader>d[", ardango.debug.frame_up, opts)
+    vim.keymap.set("n", "<leader>d]", ardango.debug.frame_down, opts)
+    vim.keymap.set("n", "<leader>dg", ardango.debug.goroutines, opts)
+    vim.keymap.set("n", "<leader>dm", ardango.debug.breakpoints, opts)
+    vim.keymap.set("n", "<leader>dq", ardango.debug.stop, opts)
 
     -- Update imports on save.
     vim.api.nvim_create_autocmd("BufWritePre", {
@@ -232,50 +232,56 @@ leaving Neovim. One session runs at a time. A breakpoint sign (default
 "●") marks lines you've toggled; the current stop location gets a "▶"
 sign and the cursor jumps there.
 
+The debugger API lives under the ardango.debug table
+(require("ardango").debug.continue(), ...). Every entry is also a
+:ArdangoDebug {sub} - see |:ArdangoDebug|. debug_status() stays
+top-level - it's a statusline component, not a command.
+
 Requirements ~
     - dlv (Delve) on PATH - https://github.com/go-delve/delve
     - the Go toolchain (`go`) - a small helper (cmd/ardango-dbg) is built
-      automatically into stdpath("cache")/ardango/ on the first Debug*
-      command, and rebuilt when it goes stale. dev/setup.sh pre-builds it.
+      automatically into stdpath("cache")/ardango/ on the first
+      :ArdangoDebug command, and rebuilt when it goes stale. dev/setup.sh
+      pre-builds it.
 
 Starting a session ~
 
-ardango.DebugCurrTest()                                  *ardango.DebugCurrTest*
+ardango.debug.curr_test()                              *ardango.debug.curr_test*
     Builds and debugs the Test* function under the cursor (dlv test) and
     stops on its first line (a one-shot entry breakpoint, cleared once
     hit). Drive it from there with the stepping commands below.
 
-ardango.DebugCurrBenchmark()                        *ardango.DebugCurrBenchmark*
+ardango.debug.curr_benchmark()                    *ardango.debug.curr_benchmark*
     Same for the Benchmark* function under the cursor
     (dlv test -- -test.run ^$ -test.bench ^Name$ -test.benchmem).
 
-ardango.DebugPackage()                                    *ardango.DebugPackage*
+ardango.debug.curr_package()                        *ardango.debug.curr_package*
     Debugs the current buffer's package as a program (dlv debug). Unlike
     the two above it does not auto-stop - set a breakpoint, then
-    |ardango.DebugContinue|.
+    |ardango.debug.continue|.
 
-ardango.DebugStop()                                          *ardango.DebugStop*
+ardango.debug.stop()                                        *ardango.debug.stop*
     Ends the session: detaches and kills the debuggee, clears the signs.
     The session is also torn down automatically when the program exits
     and when Neovim quits.
 
 Stepping (only while the target is halted) ~
 
-ardango.DebugContinue()                                  *ardango.DebugContinue*
+ardango.debug.continue()                                *ardango.debug.continue*
     Run until the next breakpoint or program exit.
 
-ardango.DebugStepOver()                                  *ardango.DebugStepOver*
-    Step over the current line. (Alias: ardango.DebugNext.)
+ardango.debug.step_over()                              *ardango.debug.step_over*
+    Step over the current line.
 
-ardango.DebugStepInto()                                  *ardango.DebugStepInto*
-    Step into a call on the current line. (Alias: ardango.DebugStep.)
+ardango.debug.step_into()                              *ardango.debug.step_into*
+    Step into a call on the current line.
 
-ardango.DebugStepOut()                                    *ardango.DebugStepOut*
+ardango.debug.step_out()                                *ardango.debug.step_out*
     Run until the current function returns.
 
 Breakpoints ~
 
-ardango.DebugBreakpoint({cond})                        *ardango.DebugBreakpoint*
+ardango.debug.breakpoint({cond})                      *ardango.debug.breakpoint*
     Toggle a breakpoint on the current line. Works with no session
     running (breakpoints persist across sessions and are re-applied on
     the next start, and their signs come back when a file is reopened);
@@ -284,14 +290,14 @@ ardango.DebugBreakpoint({cond})                        *ardango.DebugBreakpoint*
     ":ArdangoDebug break i > 5" - sets (or re-sets) a conditional
     breakpoint that only stops when the condition holds.
 
-ardango.DebugBreakpoints({opts})                      *ardango.DebugBreakpoints*
+ardango.debug.breakpoints({opts})                    *ardango.debug.breakpoints*
     List every breakpoint (file:line + the source line) in a popup:
     <CR> jumps to it, dd deletes the one under the cursor, D clears all.
     opts.telescope (or :ArdangoDebug breaks telescope) opens a
     Telescope picker with a source preview instead - <C-d> deletes;
     falls back to the popup if telescope.nvim isn't installed.
 
-ardango.DebugBreakpointClearAll()              *ardango.DebugBreakpointClearAll*
+ardango.debug.clear_breakpoints()              *ardango.debug.clear_breakpoints*
     Remove every breakpoint.
 
 Status indicator ~
@@ -310,68 +316,69 @@ ardango.debug_status()                                  *ardango.debug_status*
         { function() return require('ardango').debug_status() end }
 <
     Every state change nudges |:redrawstatus| and fires a
-    "User ArdangoDebug" autocmd for custom refresh hooks. :Ardango
-    DebugStatus echoes the string as a notification.
+    "User ArdangoDebug" autocmd for custom refresh hooks.
+    ardango.debug.status() (:ArdangoDebug status) echoes the string as a
+    notification.
 
 Inspecting state (only while the target is halted) ~
 
-ardango.DebugEval({expr})                                    *ardango.DebugEval*
+ardango.debug.eval({expr})                                  *ardango.debug.eval*
     Evaluate {expr} in the selected frame and show the value in a floating
     window, like |vim.lsp.buf.hover()|. With no {expr}, evaluates the
     <cexpr> under the cursor (`p`, `p.Name`, `xs[i]`, ...).
 
-ardango.DebugEvalVisual()                              *ardango.DebugEvalVisual*
-    Like |ardango.DebugEval|, but evaluates the last Visual selection
+ardango.debug.eval_visual()                          *ardango.debug.eval_visual*
+    Like |ardango.debug.eval|, but evaluates the last Visual selection
     (e.g. `p.Items[i].Name`). Meant for an x-mode keymap that leaves
     Visual mode first: >lua
         vim.keymap.set("x", "<leader>de",
-          "<Esc>:lua require('ardango').DebugEvalVisual()<CR>")
+          "<Esc>:lua require('ardango').debug.eval_visual()<CR>")
 <
 
-ardango.DebugLocals()                                      *ardango.DebugLocals*
+ardango.debug.locals()                                    *ardango.debug.locals*
     List the selected frame's arguments and local variables in a popup
     ("-- args --" / "-- locals --" / "-- returns --"), one line each,
-    values capped for the list view - use |ardango.DebugEval| for the
+    values capped for the list view - use |ardango.debug.eval| for the
     full value.
 
-ardango.DebugStack()                                        *ardango.DebugStack*
+ardango.debug.stack()                                      *ardango.debug.stack*
     Show the current goroutine's call stack in a popup. <CR> on a frame
-    line selects it (cursor + sign move there and DebugLocals/DebugEval
-    then operate in it - same as |ardango.DebugFrame|); the selected
-    frame is marked "←".
+    line selects it (cursor + sign move there and locals/eval then
+    operate in it - same as |ardango.debug.frame|); the selected frame is
+    marked "←".
 
 Stack frames (only while the target is halted) ~
 
-ardango.DebugFrameUp()                                    *ardango.DebugFrameUp*
-ardango.DebugFrameDown()                                *ardango.DebugFrameDown*
+ardango.debug.frame_up()                                *ardango.debug.frame_up*
+ardango.debug.frame_down()                            *ardango.debug.frame_down*
     Move the selected frame one step toward the caller / callee. The
     cursor jumps to that frame's source and the position sign changes to
-    "▷" for any frame above the innermost ("▶"). |ardango.DebugLocals| and
-    |ardango.DebugEval| then evaluate in the selected frame.
+    "▷" for any frame above the innermost ("▶"). |ardango.debug.locals|
+    and |ardango.debug.eval| then evaluate in the selected frame.
 
-ardango.DebugFrame({n})                                      *ardango.DebugFrame*
+ardango.debug.frame({n})                                    *ardango.debug.frame*
     Select frame {n} directly (0 = innermost).
 
-The selected frame resets to 0 on the next
-Continue/StepOver/StepInto/StepOut.
+The selected frame resets to 0 on the next continue / step_over /
+step_into / step_out.
 
 Goroutines (only while the target is halted) ~
 
-ardango.DebugGoroutines({opts})                        *ardango.DebugGoroutines*
+ardango.debug.goroutines({opts})                      *ardango.debug.goroutines*
     List goroutines in a popup - user-code location, status, function -
     with the current one marked "←". <CR> on a line switches to that
     goroutine. Pure-runtime goroutines (parked in runtime.*, no user
     frame) are collapsed behind a "[+N runtime]" line; press `a`, or pass
     opts.all / ":ArdangoDebug goroutines all", to show them.
 
-ardango.DebugGoroutine({id})                            *ardango.DebugGoroutine*
-    Make goroutine {id} (from |ardango.DebugGoroutines|) the selected
-    one and land on its first user frame. |ardango.DebugLocals| /
-    |ardango.DebugEval| / |ardango.DebugStack| then reflect it.
+ardango.debug.goroutine({id})                          *ardango.debug.goroutine*
+    Make goroutine {id} (from |ardango.debug.goroutines|) the selected
+    one and land on its first user frame. |ardango.debug.locals| /
+    |ardango.debug.eval| / |ardango.debug.stack| then reflect it.
 
 Ex command ~
                                                           *:ArdangoDebug*
-Every command above is also reachable as :ArdangoDebug {sub} [args], with
+Every function above is also reachable as :ArdangoDebug {sub} [args], with
 tab completion. {sub} is one of: >
     test  bench  package        - start a session
     continue  over  into  out   - run control
@@ -392,8 +399,8 @@ Examples: >
     :ArdangoDebug eval p.Name
     :ArdangoDebug frame 2
 <
-                                                        *ardango.DebugMenu*
-:ArdangoDebug with no argument (or `menu`, or require("ardango").DebugMenu())
+                                                      *ardango.debug.menu*
+:ArdangoDebug with no argument (or `menu`, or require("ardango").debug.menu())
 opens a picker of every debug command with a one-line description. With
 telescope.nvim installed it's a Telescope picker (fuzzy find + narrow);
 otherwise it's |vim.ui.select()| - which fuzzy-finds through
@@ -433,7 +440,7 @@ ardango.setup({opts})                                          *ardango.setup*
 
     debug.dlv_args is a list of extra flags inserted into the dlv test /
     dlv debug command line (before the -- test-args separator) by the
-    Debug* commands - e.g. build tags. Also replaces, not merges.
+    :ArdangoDebug commands - e.g. build tags. Also replaces, not merges.
 
     debug.env is a table of name=value strings merged over Neovim's
     environment for the child processes that compile Go - the dlv

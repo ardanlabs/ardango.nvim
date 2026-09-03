@@ -221,17 +221,19 @@ M.RunLastTest = function(opts)
   run_job(last_invocation.cmd, last_invocation.label, last_invocation.current_dir, merged_opts)
 end
 
--- Debug commands - drive Delve through lua/ardango/debug.lua (which spawns
--- `dlv --headless` plus the cmd/ardango-dbg proxy). DebugCurrTest/
--- DebugCurrBenchmark find the function under the cursor the same way
--- RunCurrTest/RunCurrBenchmark do, then hand off to debug.start; the rest
--- are session controls (no cursor context needed).
+-- Debugger - drives Delve through lua/ardango/debug.lua (which spawns
+-- `dlv --headless` plus the cmd/ardango-dbg proxy). The whole API lives
+-- under M.debug (ardango.debug.continue, ardango.debug.locals, ...) and
+-- behind :ArdangoDebug <sub>. curr_test / curr_benchmark find the
+-- function under the cursor the same way RunCurrTest/RunCurrBenchmark do,
+-- then hand off to debug.start; the rest are session controls (no cursor
+-- context needed). debug_status stays top-level - it's a statusline
+-- component, not a command.
 
 -- Starts a Delve session on the Test* function under the cursor and stops
--- on its first line (an entry breakpoint). Drive it with DebugContinue/
--- DebugNext/DebugStep/DebugStepOut, set more stops with DebugBreakpoint,
--- end it with DebugStop.
-M.DebugCurrTest = function()
+-- on its first line (an entry breakpoint). Drive it with the other
+-- ardango.debug.* controls; end it with ardango.debug.stop.
+local function debug_curr_test()
   local current_dir = vim.fn.expand('%:p:h')
   local file = vim.fn.expand('%:p')
   local cursor = api.nvim_win_get_cursor(0)
@@ -250,10 +252,9 @@ M.DebugCurrTest = function()
   vim.notify("ardango: no Test function under the cursor", vim.log.levels.WARN)
 end
 
--- Starts a Delve session on the Benchmark* function under the cursor
--- (dlv test -- -test.bench ^Name$ -test.run ^$ -test.benchmem), stopping
--- on its first line.
-M.DebugCurrBenchmark = function()
+-- Same, for the Benchmark* function under the cursor (dlv test --
+-- -test.bench ^Name$ -test.run ^$ -test.benchmem).
+local function debug_curr_benchmark()
   local current_dir = vim.fn.expand('%:p:h')
   local file = vim.fn.expand('%:p')
   local cursor = api.nvim_win_get_cursor(0)
@@ -272,62 +273,62 @@ M.DebugCurrBenchmark = function()
   vim.notify("ardango: no Benchmark function under the cursor", vim.log.levels.WARN)
 end
 
--- Starts a Delve session on the current buffer's package (dlv debug).
-M.DebugPackage = function()
-  dbg.start({ mode = "package", dir = vim.fn.expand('%:p:h') })
-end
-
-M.DebugContinue = dbg.continue
-M.DebugStepOver = dbg.step_over
-M.DebugStepInto = dbg.step_into
-M.DebugStepOut = dbg.step_out
--- Back-compat aliases (not tab-completed).
-M.DebugNext = dbg.step_over
-M.DebugStep = dbg.step_into
--- DebugBreakpoint toggles a breakpoint at the cursor; with an argument
--- (:Ardango DebugBreakpoint x > 5) it sets a conditional one.
-M.DebugBreakpoint = dbg.toggle_breakpoint
-M.DebugStop = dbg.stop
-
--- Shows the value of {expr} (the <cexpr> under the cursor by default,
--- the Visual selection for DebugEvalVisual) in a floating window, like an
--- LSP hover. Halted target only.
-M.DebugEval = dbg.eval
-M.DebugEvalVisual = dbg.eval_visual
-
--- DebugLocals lists the current frame's args + local variables in a
--- popup; DebugStack shows the goroutine's call stack in a popup (press
--- <CR> on a frame line to jump to it). Halted target only.
-M.DebugLocals = dbg.locals
-M.DebugStack = dbg.stack
-
--- DebugFrameUp/DebugFrameDown walk the call stack (caller/callee) and
--- DebugFrame jumps to a numbered frame; DebugLocals/DebugEval then
--- operate in the selected frame. Reset to frame 0 on the next stop.
-M.DebugFrameUp = dbg.frame_up
-M.DebugFrameDown = dbg.frame_down
-M.DebugFrame = dbg.frame
-
--- DebugGoroutines lists all goroutines in a popup; DebugGoroutine {id}
--- switches the selected goroutine (locals/eval/stack then follow it).
-M.DebugGoroutines = dbg.goroutines
-M.DebugGoroutine = dbg.switch_goroutine
-
--- DebugBreakpoints lists every breakpoint in a popup (<CR> jump, dd
--- delete, D clear all); `:Ardango DebugBreakpoints telescope` uses a
--- Telescope picker with a source preview instead. DebugBreakpointClearAll
--- removes them all.
-M.DebugBreakpoints = dbg.breakpoints
-M.DebugBreakpointClearAll = dbg.clear_breakpoints
-
 -- debug_status() returns a compact one-line status for a statusline /
--- winbar / lualine component ("" when there's no session). DebugStatus
--- echoes it as a notification.
+-- winbar / lualine component ("" when there's no session).
 M.debug_status = dbg.debug_status
-M.DebugStatus = function()
+
+-- ardango.debug.status echoes debug_status() as a notification.
+local function debug_status_notify()
   local st = dbg.debug_status()
   vim.notify("ardango: " .. (st ~= "" and st or "no debug session"), vim.log.levels.INFO)
 end
+
+-- The debugger API. Also reachable as :ArdangoDebug <sub> (see
+-- DEBUG_SUBCOMMANDS) and through the ardango.debug.menu picker. `menu` is
+-- filled in further down, once the picker is defined.
+M.debug = {
+  curr_test         = debug_curr_test,
+  curr_benchmark    = debug_curr_benchmark,
+  -- Starts a Delve session on the current buffer's package (dlv debug).
+  curr_package      = function() dbg.start({ mode = "package", dir = vim.fn.expand('%:p:h') }) end,
+
+  continue          = dbg.continue,
+  step_over         = dbg.step_over,
+  step_into         = dbg.step_into,
+  step_out          = dbg.step_out,
+  stop              = dbg.stop,
+
+  -- breakpoint(cond): toggle a breakpoint at the cursor; with a Go bool
+  -- expression, set a conditional one instead.
+  breakpoint        = dbg.toggle_breakpoint,
+  -- breakpoints: list every breakpoint in a popup (<CR> jump, dd delete,
+  -- D clear all); pass { telescope = true } for a Telescope picker.
+  breakpoints       = dbg.breakpoints,
+  clear_breakpoints = dbg.clear_breakpoints,
+
+  -- eval(expr): the <cexpr> under the cursor by default; eval_visual: the
+  -- Visual selection. Shown in a float, like an LSP hover. Halted only.
+  eval              = dbg.eval,
+  eval_visual       = dbg.eval_visual,
+
+  -- locals: the current frame's args + locals in a popup. stack: the
+  -- goroutine's call stack (<CR> on a frame selects it). Halted only.
+  locals            = dbg.locals,
+  stack             = dbg.stack,
+
+  -- frame_up/frame_down walk the call stack; frame(n) jumps to a numbered
+  -- frame. locals/eval then operate there. Reset on the next stop.
+  frame_up          = dbg.frame_up,
+  frame_down        = dbg.frame_down,
+  frame             = dbg.frame,
+
+  -- goroutines: list them in a popup; goroutine(id): switch the selected
+  -- one (locals/eval/stack then follow it).
+  goroutines        = dbg.goroutines,
+  goroutine         = dbg.switch_goroutine,
+
+  status            = debug_status_notify,
+}
 
 -- OrgImports is a function to update imports of the current buffer.
 M.OrgBufImports = function(wait_ms)
@@ -594,43 +595,42 @@ end
 
 -- ==========================================================================
 -- :ArdangoDebug <sub> [args] - all the debug commands, in their own
--- namespace. Each row: { sub, M-function, one-line description, arg-kind }.
+-- namespace. Each row: { sub, fn, one-line description, arg-kind }.
 -- arg-kind: "text" (free expr / breakpoint condition), "num" (a number),
 -- or nil. Order is the completion / menu order.
 -- ==========================================================================
 local DEBUG_SUBCOMMANDS = {
-  { "test",        "DebugCurrTest",           "debug the Test under the cursor" },
-  { "bench",       "DebugCurrBenchmark",      "debug the Benchmark under the cursor" },
-  { "package",     "DebugPackage",            "dlv debug the current package" },
-  { "continue",    "DebugContinue",           "run to the next breakpoint / exit" },
-  { "over",        "DebugStepOver",           "step over the current line" },
-  { "into",        "DebugStepInto",           "step into a call" },
-  { "out",         "DebugStepOut",            "run until this function returns" },
-  { "stop",        "DebugStop",               "end the session" },
-  { "break",       "DebugBreakpoint",         "toggle a breakpoint on this line",       "text" },
-  { "breaks",      "DebugBreakpoints",        "list breakpoints" },
-  { "clearbreaks", "DebugBreakpointClearAll", "remove every breakpoint" },
-  { "eval",        "DebugEval",               "evaluate the expression under the cursor", "text" },
-  { "locals",      "DebugLocals",             "show the frame's args + locals" },
-  { "stack",       "DebugStack",              "show the call stack" },
-  { "up",          "DebugFrameUp",            "select the caller frame" },
-  { "down",        "DebugFrameDown",          "select the callee frame" },
-  { "frame",       "DebugFrame",              "select a stack frame by number",         "num" },
-  { "goroutines",  "DebugGoroutines",         "list goroutines" },
-  { "goroutine",   "DebugGoroutine",          "switch to a goroutine by id",            "num" },
-  { "status",      "DebugStatus",             "echo the current debug status" },
-  { "menu",        "DebugMenu",               "this menu" },
+  { "test",        M.debug.curr_test,          "debug the Test under the cursor" },
+  { "bench",       M.debug.curr_benchmark,     "debug the Benchmark under the cursor" },
+  { "package",     M.debug.curr_package,       "dlv debug the current package" },
+  { "continue",    M.debug.continue,           "run to the next breakpoint / exit" },
+  { "over",        M.debug.step_over,          "step over the current line" },
+  { "into",        M.debug.step_into,          "step into a call" },
+  { "out",         M.debug.step_out,           "run until this function returns" },
+  { "stop",        M.debug.stop,               "end the session" },
+  { "break",       M.debug.breakpoint,         "toggle a breakpoint on this line",         "text" },
+  { "breaks",      M.debug.breakpoints,        "list breakpoints" },
+  { "clearbreaks", M.debug.clear_breakpoints,  "remove every breakpoint" },
+  { "eval",        M.debug.eval,               "evaluate the expression under the cursor", "text" },
+  { "locals",      M.debug.locals,             "show the frame's args + locals" },
+  { "stack",       M.debug.stack,              "show the call stack" },
+  { "up",          M.debug.frame_up,           "select the caller frame" },
+  { "down",        M.debug.frame_down,         "select the callee frame" },
+  { "frame",       M.debug.frame,              "select a stack frame by number",           "num" },
+  { "goroutines",  M.debug.goroutines,         "list goroutines" },
+  { "goroutine",   M.debug.goroutine,          "switch to a goroutine by id",              "num" },
+  { "status",      M.debug.status,             "echo the current debug status" },
+  { "menu",        function() M.debug.menu() end, "this menu" },
 }
 
-local DEBUG_BY_SUB, DEBUG_SUB_BY_FN = {}, {}
+local DEBUG_BY_SUB = {}
 for _, e in ipairs(DEBUG_SUBCOMMANDS) do
   DEBUG_BY_SUB[e[1]] = e
-  DEBUG_SUB_BY_FN[e[2]] = e[1]
 end
 
 -- Runs a resolved subcommand entry with the rest-of-line arg string.
 local function run_debug(entry, argstr)
-  local fn = M[entry[2]]
+  local fn = entry[2]
   argstr = argstr or ""
   if entry[4] == "num" then
     fn(argstr ~= "" and argstr or nil)
@@ -665,7 +665,7 @@ local function menu_pick(e)
 end
 
 -- Telescope debug-command picker (real fuzzy find + narrowing). Returns
--- false if telescope.nvim isn't installed, so DebugMenu falls back to
+-- false if telescope.nvim isn't installed, so debug_menu falls back to
 -- vim.ui.select.
 local function debug_menu_telescope(items)
   local ok_p, pickers = pcall(require, "telescope.pickers")
@@ -720,11 +720,11 @@ local function debug_menu_telescope(items)
   return true
 end
 
--- The debug-command picker. Uses a Telescope picker when telescope.nvim
--- is installed (fuzzy find), otherwise vim.ui.select (which itself
--- fuzzy-finds via telescope-ui-select / dressing / snacks / fzf-lua, or
--- is a plain numbered prompt).
-function M.DebugMenu()
+-- The debug-command picker (ardango.debug.menu). Uses a Telescope picker
+-- when telescope.nvim is installed (fuzzy find), otherwise vim.ui.select
+-- (which itself fuzzy-finds via telescope-ui-select / dressing / snacks /
+-- fzf-lua, or is a plain numbered prompt).
+local function debug_menu()
   local items = {}
   for _, e in ipairs(DEBUG_SUBCOMMANDS) do
     if e[1] ~= "menu" then
@@ -739,11 +739,12 @@ function M.DebugMenu()
     format_item = function(e) return string.format("%-11s  %s", e[1], e[3]) end,
   }, menu_pick)
 end
+M.debug.menu = debug_menu
 
 vim.api.nvim_create_user_command("ArdangoDebug", function(cmd_opts)
   local sub = cmd_opts.fargs[1]
   if not sub or sub == "menu" then
-    M.DebugMenu()
+    debug_menu()
     return
   end
   local entry = DEBUG_BY_SUB[sub]
@@ -809,16 +810,14 @@ local BOOL_OPTS = { "quickfix", "telescope", "verbose", "dry_run", "float", "all
 vim.api.nvim_create_user_command("Ardango", function(cmd_opts)
   local name = cmd_opts.fargs[1]
 
-  -- Debug commands moved to their own :ArdangoDebug namespace.
-  if name and name:match("^Debug") then
-    local s = DEBUG_SUB_BY_FN[name]
-    vim.notify("ardango: debug commands are now :ArdangoDebug" ..
-      (s and (" — try `:ArdangoDebug " .. s .. "`") or " (`:ArdangoDebug <Tab>`)"),
+  -- The debugger has its own namespace.
+  if name and (name == "debug" or name:match("^Debug")) then
+    vim.notify("ardango: debug commands are :ArdangoDebug <sub> (`:ArdangoDebug <Tab>`)",
       vim.log.levels.WARN)
     return
   end
 
-  if not name or not M[name] then
+  if not name or type(M[name]) ~= "function" then
     vim.notify("ardango: unknown command '" .. tostring(name) .. "'", vim.log.levels.ERROR)
     return
   end

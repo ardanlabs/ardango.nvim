@@ -44,16 +44,19 @@ Drive a [Delve](https://github.com/go-delve/delve) session on the current
 buffer's package without leaving Neovim — one session at a time, with a
 breakpoint sign in the gutter and the stop location marked and jumped to.
 
-- __DebugCurrTest__ / __DebugCurrBenchmark__: start a session on the `Test*`/`Benchmark*` function under the cursor (`dlv test`) and stop on its first line. __DebugPackage__: `dlv debug` the current package (no auto-stop — set a breakpoint first).
-- __DebugContinue__ / __DebugStepOver__ / __DebugStepInto__ / __DebugStepOut__: run / step over / step into / step out (only while halted). `DebugNext`/`DebugStep` are aliases.
-- __DebugBreakpoint__: toggle a breakpoint on the current line. Works with no session running; breakpoints persist across sessions and their signs come back when a file is reopened. `:ArdangoDebug break <expr>` sets a **conditional** breakpoint.
-- __DebugBreakpoints__: list all breakpoints in a popup — `<CR>` jump, `dd` delete, `D` clear all. `:ArdangoDebug breaks telescope` uses a Telescope picker with a source preview. __DebugBreakpointClearAll__ removes them all.
-- __DebugEval__: show the value of an expression — the identifier under the cursor by default (`p`, `p.Name`, `xs[i]`), `:ArdangoDebug eval <expr>`, or __DebugEvalVisual__ for the Visual selection — in a floating window, like an LSP hover.
-- __DebugLocals__: the selected frame's args and locals, in a popup.
-- __DebugStack__: the goroutine's call stack, in a popup; `<CR>` on a frame **selects** it (cursor + sign move; locals/eval follow).
-- __DebugFrameUp__ / __DebugFrameDown__ / __DebugFrame `<n>`__: walk the call stack — the cursor and sign move to that frame (`▷` for a caller, `▶` for the innermost), and `DebugLocals`/`DebugEval` then evaluate there. Resets on the next step/continue.
-- __DebugGoroutines__: list goroutines in a popup (runtime-only ones collapsed behind `[+N runtime]`, `a` to expand); `<CR>` switches to one. __DebugGoroutine `<id>`__ switches by id — locals/eval/stack then follow it.
-- __DebugStop__: end the session (also automatic on program exit / `:q`).
+The whole debugger is under **`:ArdangoDebug <sub> [args]`** (tab-completed)
+and, for keymaps, the **`ardango.debug.*`** Lua table.
+
+- __`test`__ / __`bench`__ (`debug.curr_test` / `debug.curr_benchmark`): start a session on the `Test*`/`Benchmark*` function under the cursor (`dlv test`) and stop on its first line. __`package`__ (`debug.curr_package`): `dlv debug` the current package (no auto-stop — set a breakpoint first).
+- __`continue`__ / __`over`__ / __`into`__ / __`out`__ (`debug.continue` / `debug.step_over` / `debug.step_into` / `debug.step_out`): run / step over / step into / step out (only while halted).
+- __`break`__ (`debug.breakpoint`): toggle a breakpoint on the current line. Works with no session running; breakpoints persist across sessions and their signs come back when a file is reopened. `:ArdangoDebug break <expr>` sets a **conditional** breakpoint.
+- __`breaks`__ (`debug.breakpoints`): list all breakpoints in a popup — `<CR>` jump, `dd` delete, `D` clear all. `:ArdangoDebug breaks telescope` uses a Telescope picker with a source preview. __`clearbreaks`__ (`debug.clear_breakpoints`) removes them all.
+- __`eval`__ (`debug.eval`): show the value of an expression — the identifier under the cursor by default (`p`, `p.Name`, `xs[i]`), `:ArdangoDebug eval <expr>`, or `debug.eval_visual` for the Visual selection — in a floating window, like an LSP hover.
+- __`locals`__ (`debug.locals`): the selected frame's args and locals, in a popup.
+- __`stack`__ (`debug.stack`): the goroutine's call stack, in a popup; `<CR>` on a frame **selects** it (cursor + sign move; locals/eval follow).
+- __`up`__ / __`down`__ / __`frame <n>`__ (`debug.frame_up` / `debug.frame_down` / `debug.frame`): walk the call stack — the cursor and sign move to that frame (`▷` for a caller, `▶` for the innermost), and `locals`/`eval` then evaluate there. Resets on the next step/continue.
+- __`goroutines`__ (`debug.goroutines`): list goroutines in a popup (runtime-only ones collapsed behind `[+N runtime]`, `a` to expand); `<CR>` switches to one. __`goroutine <id>`__ (`debug.goroutine`) switches by id — locals/eval/stack then follow it.
+- __`stop`__ (`debug.stop`): end the session (also automatic on program exit / `:q`).
 
 `require('ardango').debug_status()` returns a one-line status
 (`[debug: testdata.Greet sample.go:13 g6 #2/5]`, or `""` with no session)
@@ -64,14 +67,10 @@ every state change:
 vim.wo.winbar = "%{v:lua.require('ardango').debug_status()}"
 ```
 
-Everything is also under **`:ArdangoDebug <sub> [args]`** with tab
-completion — `test`, `continue`, `over`/`into`/`out`, `break [cond]`,
-`eval [expr]`, `stack`, `up`/`down`/`frame <n>`, `goroutines [all]`,
-`goroutine <id>`, `breaks`, `status`, `stop`, … — and **`:ArdangoDebug`**
-with no argument (or `ardango.DebugMenu`) opens a **fuzzy picker** of them
-all: a Telescope picker if telescope.nvim is installed, otherwise
-`vim.ui.select` (which fuzzy-finds through telescope-ui-select / dressing
-/ snacks / fzf-lua if you have one set up).
+**`:ArdangoDebug`** with no argument (or `ardango.debug.menu`) opens a
+**fuzzy picker** of every subcommand: a Telescope picker if telescope.nvim
+is installed, otherwise `vim.ui.select` (which fuzzy-finds through
+telescope-ui-select / dressing / snacks / fzf-lua if you have one set up).
 
 `dlv` must be on `PATH`; a small Go helper is built automatically on first
 use (needs the `go` toolchain), so there's no manual build step.
@@ -96,32 +95,32 @@ require("ardango").setup({
 ```lua
 local ardango = require "ardango"
 local opts = { noremap = true, silent = true }
-vim.keymap.set('n', '<leader>dd', ardango.DebugMenu, opts)
-vim.keymap.set('n', '<leader>dt', ardango.DebugCurrTest, opts)
-vim.keymap.set('n', '<leader>dB', ardango.DebugCurrBenchmark, opts)
-vim.keymap.set('n', '<leader>dP', ardango.DebugPackage, opts)
-vim.keymap.set('n', '<leader>db', ardango.DebugBreakpoint, opts)
-vim.keymap.set('n', '<leader>dc', ardango.DebugContinue, opts)
-vim.keymap.set('n', '<leader>dn', ardango.DebugStepOver, opts)
-vim.keymap.set('n', '<leader>ds', ardango.DebugStepInto, opts)
-vim.keymap.set('n', '<leader>do', ardango.DebugStepOut, opts)
-vim.keymap.set('n', '<leader>de', ardango.DebugEval, opts)
-vim.keymap.set('x', '<leader>de', "<Esc>:lua require('ardango').DebugEvalVisual()<CR>", opts)
-vim.keymap.set('n', '<leader>dl', ardango.DebugLocals, opts)
-vim.keymap.set('n', '<leader>dS', ardango.DebugStack, opts)
-vim.keymap.set('n', '<leader>d[', ardango.DebugFrameUp, opts)
-vim.keymap.set('n', '<leader>d]', ardango.DebugFrameDown, opts)
-vim.keymap.set('n', '<leader>dg', ardango.DebugGoroutines, opts)
-vim.keymap.set('n', '<leader>dm', ardango.DebugBreakpoints, opts)
-vim.keymap.set('n', '<leader>dq', ardango.DebugStop, opts)
+vim.keymap.set('n', '<leader>dd', ardango.debug.menu, opts)
+vim.keymap.set('n', '<leader>dt', ardango.debug.curr_test, opts)
+vim.keymap.set('n', '<leader>dB', ardango.debug.curr_benchmark, opts)
+vim.keymap.set('n', '<leader>dP', ardango.debug.curr_package, opts)
+vim.keymap.set('n', '<leader>db', ardango.debug.breakpoint, opts)
+vim.keymap.set('n', '<leader>dc', ardango.debug.continue, opts)
+vim.keymap.set('n', '<leader>dn', ardango.debug.step_over, opts)
+vim.keymap.set('n', '<leader>ds', ardango.debug.step_into, opts)
+vim.keymap.set('n', '<leader>do', ardango.debug.step_out, opts)
+vim.keymap.set('n', '<leader>de', ardango.debug.eval, opts)
+vim.keymap.set('x', '<leader>de', "<Esc>:lua require('ardango').debug.eval_visual()<CR>", opts)
+vim.keymap.set('n', '<leader>dl', ardango.debug.locals, opts)
+vim.keymap.set('n', '<leader>dS', ardango.debug.stack, opts)
+vim.keymap.set('n', '<leader>d[', ardango.debug.frame_up, opts)
+vim.keymap.set('n', '<leader>d]', ardango.debug.frame_down, opts)
+vim.keymap.set('n', '<leader>dg', ardango.debug.goroutines, opts)
+vim.keymap.set('n', '<leader>dm', ardango.debug.breakpoints, opts)
+vim.keymap.set('n', '<leader>dq', ardango.debug.stop, opts)
 
 -- Run control gets hit constantly — single keys (matching nvim-dap's
 -- defaults) are easier on the hands:
-vim.keymap.set('n', '<F5>',    ardango.DebugContinue, opts)
-vim.keymap.set('n', '<F9>',    ardango.DebugBreakpoint, opts)
-vim.keymap.set('n', '<F10>',   ardango.DebugStepOver, opts)
-vim.keymap.set('n', '<F11>',   ardango.DebugStepInto, opts)
-vim.keymap.set('n', '<S-F11>', ardango.DebugStepOut, opts)
+vim.keymap.set('n', '<F5>',    ardango.debug.continue, opts)
+vim.keymap.set('n', '<F9>',    ardango.debug.breakpoint, opts)
+vim.keymap.set('n', '<F10>',   ardango.debug.step_over, opts)
+vim.keymap.set('n', '<F11>',   ardango.debug.step_into, opts)
+vim.keymap.set('n', '<S-F11>', ardango.debug.step_out, opts)
 ```
 
 ## Dependencies
@@ -131,7 +130,7 @@ vim.keymap.set('n', '<S-F11>', ardango.DebugStepOut, opts)
 - [nui.nvim](https://github.com/MunifTanjim/nui.nvim)
 - [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) — optional: used for the tag name/value prompts (`AddTagToField` & co.), and for browsing test/build failures when you pass `{ telescope = true }`. Falls back to plain `vim.ui.input`/the quickfix list if it isn't installed.
 - `gofmt` — optional, ships with the Go toolchain (so present anywhere `go` is): used to re-align struct columns after a tag edit. Skipped silently if it isn't on `PATH`.
-- [`dlv`](https://github.com/go-delve/delve) (Delve) — optional: required by the `Debug*` commands. The `go` toolchain is also needed the first time (to build the bundled debug helper).
+- [`dlv`](https://github.com/go-delve/delve) (Delve) — optional: required by the `:ArdangoDebug` commands. The `go` toolchain is also needed the first time (to build the bundled debug helper).
 
 Run `:checkhealth ardango` to verify the `go` binary, the Go treesitter
 parser, and these dependencies are all in place. `:help ardango` covers

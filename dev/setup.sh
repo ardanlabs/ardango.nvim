@@ -45,9 +45,10 @@ fi
 # (but harmless) error on any hover containing a fenced code block.
 "$nvim" --clean --headless -u "$here/init.lua" -c "TSInstallSync! markdown markdown_inline" -c "qa"
 
-# Pre-build the Delve proxy helper used by the Debug* commands, into the
-# same cache location lua/ardango/debug.lua builds it lazily on first use -
-# so the dev session doesn't pay that on the first :Ardango DebugCurrTest.
+# Pre-build the Delve proxy helper used by the :ArdangoDebug commands,
+# into the same cache location lua/ardango/debug.lua builds it lazily on
+# first use - so the dev session doesn't pay that on the first
+# :ArdangoDebug test.
 # Needs the Go toolchain; skipped with a warning otherwise (the lazy build
 # then handles it, or errors if `go` is still missing at that point).
 root="$(cd "$here/.." && pwd)"

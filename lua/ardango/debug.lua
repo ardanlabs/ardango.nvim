@@ -753,12 +753,12 @@ function M.eval_visual()
   M.eval(vim.trim(text or ""))
 end
 
--- Own popup state so DebugLocals/DebugStack don't unmount (or get
+-- Own popup state so locals/stack don't unmount (or get
 -- unmounted by) the shared test/build results popup.
 local inspect_popup_state = { bufnr = nil, popup = nil }
 
--- DebugLocals: the current frame's args + locals, in a popup. Each value
--- is capped for the list view - DebugEval <name> shows the full thing.
+-- locals: the current frame's args + locals, in a popup. Each value is
+-- capped for the list view - eval <name> shows the full thing.
 local LOCALS_LINE_CAP = 200
 
 function M.locals()
@@ -804,7 +804,7 @@ end
 
 -- Moves the inspection frame to n: jumps the cursor there and swaps the
 -- position sign (▶ for frame 0, ▷ for a caller frame). Subsequent
--- DebugLocals/DebugEval then operate in that frame.
+-- locals/eval then operate in that frame.
 local function goto_frame(s, n)
   local f = s.frames[n + 1]
   if not f then
@@ -825,8 +825,8 @@ local function goto_frame(s, n)
     vim.log.levels.INFO)
 end
 
--- DebugStack: the current goroutine's call stack, in a popup. <CR> on a
--- frame line selects it (DebugLocals/DebugEval then operate there, cursor
+-- stack: the current goroutine's call stack, in a popup. <CR> on a
+-- frame line selects it (locals/eval then operate there, cursor
 -- + sign move); the current one is marked "←".
 function M.stack()
   local s = session
@@ -853,7 +853,7 @@ function M.stack()
   end)
 end
 
--- DebugFrameUp/DebugFrameDown: move toward the caller / callee.
+-- frame_up/frame_down: move toward the caller / callee.
 function M.frame_up()
   local s = session
   if not inspect_ok(s) then
@@ -882,7 +882,7 @@ function M.frame_down()
   end)
 end
 
--- DebugFrame {n}: jump straight to frame n.
+-- frame {n}: jump straight to frame n.
 function M.frame(n)
   local s = session
   if not inspect_ok(s) then
@@ -890,7 +890,7 @@ function M.frame(n)
   end
   local num = tonumber(n)
   if not num or num ~= math.floor(num) then
-    vim.notify("ardango: DebugFrame needs a frame number (see :ArdangoDebug stack)",
+    vim.notify("ardango: :ArdangoDebug frame needs a frame number (see :ArdangoDebug stack)",
       vim.log.levels.WARN)
     return
   end
@@ -927,7 +927,7 @@ local function first_user_frame(frames)
   return 0
 end
 
--- DebugGoroutines: goroutines with their user-code location, in a popup.
+-- goroutines: goroutines with their user-code location, in a popup.
 -- <CR> switches to the one under the cursor. Pure-runtime goroutines
 -- (parked in runtime.*, no user frame) are hidden behind a "[+N runtime]"
 -- line - press `a`, or `:ArdangoDebug goroutines all`, to show them.
@@ -989,7 +989,7 @@ function M.goroutines(opts)
   end)
 end
 
--- DebugGoroutine {id}: make goroutine {id} the selected one, and land on
+-- goroutine {id}: make goroutine {id} the selected one, and land on
 -- its first user frame (not the runtime frame it's parked in). Locals/
 -- eval/stack then reflect it.
 function M.switch_goroutine(id)
@@ -999,7 +999,7 @@ function M.switch_goroutine(id)
   end
   local gid = tonumber(id)
   if not gid or gid ~= math.floor(gid) then
-    vim.notify("ardango: DebugGoroutine needs a goroutine id (see :ArdangoDebug goroutines)",
+    vim.notify("ardango: :ArdangoDebug goroutine needs a goroutine id (see :ArdangoDebug goroutines)",
       vim.log.levels.WARN)
     return
   end
@@ -1167,7 +1167,7 @@ local function breakpoints_telescope(recs)
   return true
 end
 
--- DebugBreakpoints: list every breakpoint. In the nui popup: <CR> jumps,
+-- breakpoints: list every breakpoint. In the nui popup: <CR> jumps,
 -- dd deletes the one under the cursor, D clears all. With opts.telescope
 -- (or :ArdangoDebug breaks telescope), a Telescope picker with a
 -- source preview instead - <C-d> deletes; falls back to the popup if
@@ -1219,7 +1219,7 @@ function M.breakpoints(opts)
   })
 end
 
--- DebugBreakpointClearAll: remove every breakpoint.
+-- clear_breakpoints: remove every breakpoint.
 function M.clear_breakpoints()
   local n = 0
   for key in pairs(breakpoints) do

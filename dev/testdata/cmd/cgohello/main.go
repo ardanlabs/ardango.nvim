@@ -8,7 +8,7 @@
 // which surfaces as "could not launch process: not an executable file".
 // The fix is debug.env = { CGO_CFLAGS = "-O2" } in setup() (CGO_ENABLED =
 // "0" is not an option here - this package genuinely needs cgo). See the
-// DebugPackage rows in TESTING.md.
+// :ArdangoDebug package rows in TESTING.md.
 package main
 
 /*
