@@ -670,7 +670,11 @@ func main() {
 	s.stopping = true
 	c := s.client
 	s.mu.Unlock()
-	// Let an in-flight run goroutine unwind first, as the "stop" op does.
+	if c != nil {
+		_, _ = c.Halt()
+	}
+	// Let an in-flight run goroutine unwind first, as the "stop" op does -
+	// Halt() above is what actually unblocks it.
 	for i := 0; i < 200; i++ {
 		s.mu.Lock()
 		busy := s.busy

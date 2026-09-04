@@ -309,7 +309,12 @@ local function apply_bp(s, bp, cb)
   local lines = file_lines(bp.file)
 
   local function try(n, tries)
-    n = next_code_line(lines, n) or n
+    local code_line = next_code_line(lines, n)
+    if not code_line and #lines > 0 then
+      cb(false, "only blank / comment lines below", true)
+      return
+    end
+    n = code_line or n -- unreadable file (lines == {}) - let dlv be the judge
     send(s, { op = "break", file = bp.file, line = n, cond = bp.cond }, function(r)
       if bp.removed then
         -- Toggled off while this was in flight: remove_bp already cleaned
@@ -431,7 +436,7 @@ local function place_stop_sign(file, line)
   end
   local bufnr = open_at(file, line)
   if bufnr then
-    vim.fn.sign_place(POS_SIGN_ID, SIGN_GROUP, POS_SIGN, bufnr, { lnum = line, priority = 20 })
+    pcall(vim.fn.sign_place, POS_SIGN_ID, SIGN_GROUP, POS_SIGN, bufnr, { lnum = line, priority = 20 })
   end
 end
 
@@ -439,7 +444,10 @@ local function show_stop(s, st)
   -- A fresh stop invalidates any frame the user had navigated to.
   s.frame = 0
   s.frames = nil
-  s.goroutine = st.goroutine
+  -- 0 means "no goroutine info" (the helper always sends the field, so it
+  -- can't just be absent) - normalize to nil so `if s.goroutine` in the
+  -- statusline doesn't render a bogus "g0".
+  s.goroutine = (st.goroutine ~= 0) and st.goroutine or nil
 
   -- The one-shot entry breakpoint has done its job.
   local was_entry = s.entry_bp ~= nil
@@ -962,7 +970,7 @@ local function goto_frame(s, n)
   local bufnr = (f.file ~= "" and f.file ~= nil) and open_at(f.file, f.line) or nil
   clear_position_sign()
   if bufnr then
-    vim.fn.sign_place(POS_SIGN_ID, SIGN_GROUP, n == 0 and POS_SIGN or FRAME_SIGN, bufnr,
+    pcall(vim.fn.sign_place, POS_SIGN_ID, SIGN_GROUP, n == 0 and POS_SIGN or FRAME_SIGN, bufnr,
       { lnum = f.line, priority = 20 })
   end
   s.loc = { file = f.file, line = f.line, func = f["function"] }
@@ -1501,7 +1509,7 @@ api.nvim_create_autocmd("BufReadPost", {
         if bp.sign_id then
           pcall(vim.fn.sign_unplace, SIGN_GROUP, { id = bp.sign_id })
         end
-        bp.sign_id = vim.fn.sign_place(0, SIGN_GROUP, BP_SIGN, ev.buf, { lnum = bp.line, priority = 10 })
+        bp.sign_id = place_bp_sign(bp)
       end
     end
   end,
