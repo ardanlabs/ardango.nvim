@@ -48,7 +48,9 @@ vim.fn.sign_define(BP_SIGN, { text = "●", texthl = "DiagnosticError" })
 
 -- Breakpoints persist across sessions (and can be toggled with no session
 -- running). Keyed "absfile\0lnum" -> { file, line, sign_id, applied,
--- removed, cond }. `removed` marks a bp removed while an apply_bp for it
+-- removed, cond, origin_line }. `origin_line` is the line last toggled
+-- on, kept fixed across snaps (unlike `line`) so toggling off from there
+-- still finds it. `removed` marks a bp removed while an apply_bp for it
 -- was in flight, so that response backs out instead of reviving it.
 -- `applied` tracks whether the current session's dlv has this breakpoint;
 -- reset when a session ends, re-synced when one starts / next stops.
@@ -1169,6 +1171,18 @@ end
 -- breakpoints
 -- --------------------------------------------------------------------------
 
+-- Finds the breakpoint whose *original* toggle line was `line` (it may
+-- have since snapped elsewhere), so toggling off from where the user
+-- actually clicked still finds it. nil if none.
+local function find_bp_by_origin(file, line)
+  for _, bp in pairs(breakpoints) do
+    if bp.file == file and bp.origin_line == line then
+      return bp
+    end
+  end
+  return nil
+end
+
 -- Removes the breakpoint identified by key: drops its sign, forgets it,
 -- and tells a live dlv (or queues the clear for the next stop).
 local function remove_bp(key)
@@ -1216,15 +1230,19 @@ function M.toggle_breakpoint(cond)
   cond = (cond and cond ~= "") and cond or nil
   local line = api.nvim_win_get_cursor(0)[1]
   local key = bpkey(file, line)
+  -- A snapped breakpoint's key follows it; find it by its original line
+  -- too, so toggling off from where you actually clicked still works.
+  local existing = breakpoints[key] or find_bp_by_origin(file, line)
 
-  if breakpoints[key] then
+  if existing then
+    local existing_key = bpkey(existing.file, existing.line)
     if not cond then
-      remove_bp(key)
+      remove_bp(existing_key)
       vim.notify(string.format("ardango: breakpoint removed %s:%d", short(file), line), vim.log.levels.INFO)
       return
     end
     -- Re-set with the new condition.
-    remove_bp(key)
+    remove_bp(existing_key)
   end
 
   local condtxt = cond and (" if " .. cond) or ""
@@ -1232,7 +1250,7 @@ function M.toggle_breakpoint(cond)
   -- Halted session: let dlv place it (and snap / reject) before we mark
   -- anything, so a bad line never leaves a stray sign.
   if session and session.ready and not session.running then
-    local bp = { file = file, line = line, sign_id = nil, applied = true, cond = cond }
+    local bp = { file = file, line = line, sign_id = nil, applied = true, cond = cond, origin_line = line }
     breakpoints[key] = bp
     apply_bp(session, bp, function(ok, err, exhausted)
       if ok then
@@ -1268,7 +1286,7 @@ function M.toggle_breakpoint(cond)
       vim.log.levels.INFO)
     return
   end
-  local bp = { file = file, line = target, sign_id = nil, applied = false, cond = cond }
+  local bp = { file = file, line = target, sign_id = nil, applied = false, cond = cond, origin_line = line }
   breakpoints[tkey] = bp
   bp.sign_id = place_bp_sign(bp)
   sync_breakpoints(session)
