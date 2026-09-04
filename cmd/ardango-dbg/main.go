@@ -237,9 +237,14 @@ func (s *server) connect(req request) {
 func (s *server) setBreak(req request) {
 	s.mu.Lock()
 	client := s.client
+	busy := s.busy
 	s.mu.Unlock()
 	if client == nil {
 		s.fail(req.ID, fmt.Errorf("not connected"))
+		return
+	}
+	if busy {
+		s.fail(req.ID, fmt.Errorf("target is running"))
 		return
 	}
 	bp, err := client.CreateBreakpoint(&api.Breakpoint{File: req.File, Line: req.Line, Cond: req.Cond})
@@ -259,10 +264,15 @@ func (s *server) setBreak(req request) {
 func (s *server) clearBreak(req request) {
 	s.mu.Lock()
 	client := s.client
+	busy := s.busy
 	id, ok := s.bps[key(req.File, req.Line)]
 	s.mu.Unlock()
 	if client == nil {
 		s.fail(req.ID, fmt.Errorf("not connected"))
+		return
+	}
+	if busy {
+		s.fail(req.ID, fmt.Errorf("target is running"))
 		return
 	}
 	if !ok {

@@ -221,6 +221,13 @@ local function is_unbreakable(err)
       or err:find("no line ", 1, true) ~= nil
 end
 
+-- The helper's own wording (setBreak/clearBreak) for a retry that raced a
+-- continue mid-sync: nothing's actually wrong, it'll apply at the next
+-- stop, so this shouldn't get a WARN like a real transient failure.
+local function is_target_running(err)
+  return err == "target is running"
+end
+
 -- Drops a breakpoint dlv won't accept: unplace its sign, forget it, and
 -- tell the user why. The mark is gone, so the ERROR is the only feedback.
 local function reject_bp(bp, reason)
@@ -370,8 +377,10 @@ local function sync_breakpoints(s)
           reject_bp(bp, err)
         else
           bp.applied = false
-          vim.notify("ardango: breakpoint " .. short(bp.file) .. ":" .. bp.line ..
-            " not set — " .. (err or "?"), vim.log.levels.WARN)
+          if not is_target_running(err) then
+            vim.notify("ardango: breakpoint " .. short(bp.file) .. ":" .. bp.line ..
+              " not set — " .. (err or "?"), vim.log.levels.WARN)
+          end
         end
       end)
     end
@@ -1271,8 +1280,10 @@ function M.toggle_breakpoint(cond)
       else
         bp.applied = false
         bp.sign_id = bp.sign_id or place_bp_sign(bp)
-        vim.notify("ardango: breakpoint " .. short(bp.file) .. ":" .. bp.line ..
-          " not set — " .. (err or "?"), vim.log.levels.WARN)
+        if not is_target_running(err) then
+          vim.notify("ardango: breakpoint " .. short(bp.file) .. ":" .. bp.line ..
+            " not set — " .. (err or "?"), vim.log.levels.WARN)
+        end
       end
     end)
     return
