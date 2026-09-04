@@ -165,7 +165,7 @@ is `ardango.debug.<name>` (e.g. `over` → `step_over`, `break` →
 | Command | Fixture / cursor position | Expected result |
 |---|---|---|
 | `:ArdangoDebug break` then `:ArdangoDebug test` | breakpoint on `sample_test.go:8`, cursor inside `TestGreetPass` | notify `building debug helper...` (first run only), then `debug session ready`; `●` sign on line 8 |
-| `:ArdangoDebug break` on `cmd/greet/main.go:20`, then `:ArdangoDebug package` | cursor in `cmd/greet/main.go` | `dlv debug .`; notify `debug session ready`; `:ArdangoDebug continue` stops at `main.main` line 20 (once per loop iteration), a final `continue` → `program exited (status 0)` + auto-stop |
+| `:ArdangoDebug break` on `cmd/greet/main.go:21`, then `:ArdangoDebug package` | cursor in `cmd/greet/main.go` | `dlv debug .`; notify `debug session ready`; `:ArdangoDebug continue` stops at `main.main` line 21 (once per loop iteration), a final `continue` → `program exited (status 0)` + auto-stop |
 | `:ArdangoDebug continue` | after the above | stops at `sample_test.go:8`, cursor jumps there, `▶` sign; notify `stopped at sample_test.go:8 (breakpoint, goroutine N)` |
 | `:ArdangoDebug over` / `into` / `out` | halted in `TestGreetPass` | each moves the stop location (`into` steps into `Greet` in `sample.go`); `continue` again runs to exit → `program exited (status ...)` + session auto-stops |
 | `:ArdangoDebug eval` | halted, cursor on `p` in `sample.go` `Greet` | float: `ardango/dev/testdata.Person = testdata.Person {Name: "Ardan", ...}` |
@@ -185,6 +185,7 @@ is `ardango.debug.<name>` (e.g. `over` → `step_over`, `break` →
 | `:ArdangoDebug break` on a blank / comment line, **no session** | e.g. `cmd/greet/main.go:3` (a `//` line) | notify `breakpoint set …:7 (snapped from line 3)`; `●` never lands on the comment/blank line |
 | `:ArdangoDebug break` on a blank / comment line, halted session | e.g. `cmd/greet/main.go:14` | notify `breakpoint set …:15 (snapped from line 14)`; `●` lands on the next real statement, not the blank one |
 | `:ArdangoDebug break` where nothing is breakable in range, halted session | e.g. `cmd/greet/main.go:7` (`package main`) | notify `can't break at …:7 — no breakable line found (gave up after 5 tries)` at ERROR level; **no `●` sign left** |
+| `:ArdangoDebug break` again from the *original* line after a snap | `cmd/greet/main.go:19` (`}`, snaps to 20), then toggle again with the cursor back on 19 | notify `breakpoint removed …:19`; `●` on 20 is gone, not duplicated |
 | `:ArdangoDebug break c.name == "case 05"` inside a `TestManyMixed` subtest, then start + continue | — | stops only at the iteration where `c.name == "case 05"` (`:ArdangoDebug eval c.name` confirms); the condition shows as `[if …]` in `:ArdangoDebug breaks` |
 | `<CR>` on a frame line in the `:ArdangoDebug stack` popup | halted | selects that frame (notify `frame #n/N`, sign + cursor move) — not just a cursor jump |
 | `<CR>` on a goroutine line in the `:ArdangoDebug goroutines` popup; `a` in that popup | halted | `<CR>` switches to it; `a` (or `:ArdangoDebug goroutines all`) expands the `[+N runtime]` collapsed rows |
